@@ -384,10 +384,13 @@ def main():
         if turns >= MAX_TOOL_TURNS:
             print(f"[Tool limit ({MAX_TOOL_TURNS}) reached]")
 
-        # === Context status ===
+        # === Context status (always visible) ===
         conv.update_tokens(client.last_prompt_tokens)
-        if _RICH and conv.total_prompt_tokens > 0:
-            console.print(ui.render_context_status(conv.total_prompt_tokens, CONTEXT_WINDOW))
+        if conv.total_prompt_tokens > 0:
+            _show_context_status(conv.total_prompt_tokens, CONTEXT_WINDOW,
+                                 client.last_eval_tokens,
+                                 console if _RICH else None,
+                                 ui if _RICH else None)
 
         # === 3-Tier Context Management ===
         if conv.needs_result_clearing():
@@ -430,6 +433,28 @@ def _register_optional_tools(ctx):
             tool_reg.register(getattr(mod, cls_name)(ctx))
         except (ImportError, AttributeError):
             pass
+
+
+def _show_context_status(used: int, total: int, last_eval: int,
+                         console=None, ui=None):
+    """Show context usage after every turn. Works in both Rich and plain mode."""
+    pct = (used / total * 100) if total else 0
+    bar_width = 30
+    filled = int(bar_width * pct / 100)
+    bar = "#" * filled + "-" * (bar_width - filled)
+
+    if console and ui:
+        console.print(ui.render_context_status(used, total))
+    else:
+        # Color codes for plain terminal
+        if pct < 50:
+            color = "\033[32m"  # green
+        elif pct < 75:
+            color = "\033[33m"  # yellow
+        else:
+            color = "\033[31m"  # red
+        reset = "\033[0m"
+        print(f"  {color}[{bar}] {used//1000}K/{total//1000}K ({pct:.0f}%) | last: {last_eval} tokens{reset}")
 
 
 if __name__ == "__main__":
