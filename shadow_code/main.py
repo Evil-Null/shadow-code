@@ -1,13 +1,15 @@
-# shadow_code/main.py -- REPL, signal handling, startup health check
+# shadow_code/main.py -- Full integrated REPL
 #
-# Entry point for shadow-code. Orchestrates:
-#   - Ollama health check on startup
-#   - User input loop with slash commands (/help /clear /exit /tokens)
-#   - Streaming LLM responses via OllamaClient
-#   - Tool call detection and execution via parser + tool registry
-#   - Environment prefix injection on first message (keeps system prompt static)
-#   - 3-tier context management at end of each turn
-#   - Ctrl+C signal handling for graceful interruption
+# Orchestrates all modules:
+#   - Rich UI (panels, markdown, spinners) via ui.py + streaming.py
+#   - prompt_toolkit REPL (history, multiline, completion) via repl.py
+#   - SQLite session persistence via db.py
+#   - Destructive command warnings via safety.py
+#   - 3-tier context management (result clearing, compaction, emergency truncate)
+#   - Ollama streaming with tool_call buffer via display.py
+#   - All 7 tools via tool registry
+#
+# Falls back to plain-text mode if rich/prompt_toolkit not installed.
 
 import os
 import platform
@@ -20,75 +22,214 @@ from .conversation import Conversation
 from .display import StreamDisplay
 from .ollama_client import OllamaClient
 from .parser import parse_tool_calls
-from .prompt import SYSTEM_PROMPT  # static constant, NOT a function
+from .prompt import SYSTEM_PROMPT
 from .tool_context import ToolContext
 from . import tools as tool_reg
+from .safety import check_destructive
+
+# Optional imports -- graceful fallback
+try:
+    from rich.console import Console
+    from .ui import UIRenderer, HAS_RICH
+    from .streaming import StreamController, StreamCancelled
+    _RICH = HAS_RICH
+except ImportError:
+    _RICH = False
+
+try:
+    from .repl import create_prompt_session, get_input
+    _HAS_REPL = True
+except ImportError:
+    _HAS_REPL = False
+
+try:
+    from .db import Database
+    _HAS_DB = True
+except ImportError:
+    _HAS_DB = False
 
 
 def main():
     cwd = os.getcwd()
-    ctx = ToolContext(cwd)  # shared state for all tools
+    ctx = ToolContext(cwd)
 
-    # Register tools (Phase 1: only bash; Phase 2 adds the rest)
+    # Register all tools
     from .tools.bash import BashTool
     tool_reg.register(BashTool(ctx))
-
-    # Optional: register Phase 2 tools if available
     _register_optional_tools(ctx)
 
+    # Ollama health check
     client = OllamaClient()
     ok, msg = client.health_check()
     if not ok:
         print(f"Error: {msg}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"shadow-code v0.1.0 | {MODEL_NAME}")
-    print(f"CWD: {cwd}")
-    print("Commands: /help /clear /exit /tokens\n")
+    # Setup UI
+    if _RICH:
+        console = Console()
+        ui = UIRenderer()
+        display = StreamDisplay()
+        stream_ctrl = StreamController(client, ui, console, display)
+        console.print(ui.render_welcome())
+    else:
+        console = None
+        ui = None
+        display = StreamDisplay()
+        stream_ctrl = None
+        print(f"shadow-code v0.1.0 | {MODEL_NAME}")
+        print(f"CWD: {cwd}")
+
+    # Setup REPL
+    if _HAS_REPL:
+        prompt_session = create_prompt_session()
+    else:
+        prompt_session = None
+
+    # Setup DB
+    db = None
+    session_id = None
+    if _HAS_DB:
+        try:
+            db = Database()
+            session_id = db.create_session(MODEL_NAME)
+        except Exception as e:
+            print(f"[DB warning: {e}]")
+            db = None
+
+    print("Commands: /help /clear /exit /tokens /save /load /list /info\n")
 
     conv = Conversation()
-    display = StreamDisplay()
     interrupted = False
-    first_message = True  # track first message for env prefix
+    first_message = True
 
     def on_sigint(signum, frame):
         nonlocal interrupted
         interrupted = True
-
     signal.signal(signal.SIGINT, on_sigint)
 
     while True:
-        try:
-            user_input = input("shadow> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+        # Get input
+        if _HAS_REPL:
+            user_input = get_input(prompt_session, MODEL_NAME)
+            if user_input is None:
+                break
+        else:
+            try:
+                user_input = input("shadow> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
 
         if not user_input:
             continue
 
-        # Slash commands
+        # === Slash commands ===
         if user_input == "/exit":
             break
+
         if user_input == "/clear":
             conv.clear()
             first_message = True
+            if _RICH:
+                console.clear()
+                console.print(ui.render_welcome())
             print("[Cleared]")
             continue
+
         if user_input == "/tokens":
-            pct = (conv.total_prompt_tokens / CONTEXT_WINDOW * 100) if CONTEXT_WINDOW else 0
-            print(f"Prompt: {conv.total_prompt_tokens} tokens "
-                  f"({pct:.0f}% of {CONTEXT_WINDOW})")
-            continue
-        if user_input == "/help":
-            print("Commands:")
-            print("  /clear   -- Clear conversation history")
-            print("  /exit    -- Exit shadow-code")
-            print("  /tokens  -- Show token usage")
-            print("  /help    -- Show this help")
+            used = conv.total_prompt_tokens
+            if _RICH:
+                console.print(ui.render_context_status(used, CONTEXT_WINDOW))
+            else:
+                pct = (used / CONTEXT_WINDOW * 100) if CONTEXT_WINDOW else 0
+                print(f"Context: {used} tokens ({pct:.0f}% of {CONTEXT_WINDOW})")
             continue
 
-        # Inject environment info on first message (keeps system prompt static for KV cache)
+        if user_input == "/info":
+            print(f"  Model:    {MODEL_NAME}")
+            print(f"  CWD:      {ctx.cwd}")
+            print(f"  Messages: {len(conv.get_messages())}")
+            print(f"  Tokens:   {conv.total_prompt_tokens}")
+            print(f"  Tools:    {', '.join(tool_reg._REGISTRY.keys())}")
+            if session_id:
+                print(f"  Session:  #{session_id}")
+            continue
+
+        if user_input == "/help":
+            cmds = [
+                ("/help", "Show this help"),
+                ("/clear", "Clear conversation"),
+                ("/exit", "Exit shadow-code"),
+                ("/tokens", "Show context usage"),
+                ("/info", "Show session info"),
+                ("/save [name]", "Save session"),
+                ("/load [id]", "Load session"),
+                ("/list", "List saved sessions"),
+            ]
+            if _RICH:
+                console.print(ui.render_help(cmds))
+            else:
+                for cmd, desc in cmds:
+                    print(f"  {cmd:20} {desc}")
+            continue
+
+        if user_input.startswith("/save"):
+            if db:
+                name = user_input[5:].strip() or f"Session #{session_id}"
+                db.rename_session(session_id, name)
+                print(f"  Session saved as '{name}'")
+            else:
+                print("  [DB not available]")
+            continue
+
+        if user_input.startswith("/load"):
+            if db:
+                arg = user_input[5:].strip()
+                if arg:
+                    try:
+                        sid = int(arg)
+                        s = db.get_session(sid)
+                        if s:
+                            conv.clear()
+                            first_message = True
+                            for m in s["messages"]:
+                                if m["role"] == "user":
+                                    conv.add_user(m["content"])
+                                    first_message = False
+                                elif m["role"] == "assistant":
+                                    conv.add_assistant(m["content"])
+                            session_id = sid
+                            print(f"  Loaded session #{sid} ({len(s['messages'])} messages)")
+                        else:
+                            print(f"  Session #{sid} not found")
+                    except ValueError:
+                        print("  Usage: /load <id>")
+                else:
+                    print("  Usage: /load <id>")
+            else:
+                print("  [DB not available]")
+            continue
+
+        if user_input == "/list":
+            if db:
+                sessions = db.list_sessions()
+                if sessions:
+                    for s in sessions:
+                        name = s.get("name", "") or f"Session #{s['id']}"
+                        msgs = s.get("msg_count", 0)
+                        print(f"  #{s['id']:4}  {name:30} ({msgs} msgs)")
+                else:
+                    print("  No saved sessions")
+            else:
+                print("  [DB not available]")
+            continue
+
+        if user_input.startswith("/"):
+            print(f"  Unknown command: {user_input.split()[0]}. Type /help")
+            continue
+
+        # === Inject environment on first message ===
         if first_message:
             shell = os.environ.get("SHELL", "/bin/bash").rsplit("/", 1)[-1]
             env_prefix = (
@@ -101,61 +242,111 @@ def main():
         else:
             conv.add_user(user_input)
 
+        # Save to DB
+        if db:
+            db.add_message(session_id, "user", user_input)
+
+        # === Tool execution loop ===
         turns = 0
         errors = 0
 
-        # Inner loop: LLM response -> parse tool calls -> execute -> feed results back
         while turns < MAX_TOOL_TURNS:
             interrupted = False
-            display.reset()
 
-            try:
-                for chunk in client.chat_stream(conv.get_messages(), SYSTEM_PROMPT):
-                    if interrupted:
-                        break
-                    display.feed(chunk)
-            except KeyboardInterrupt:
-                interrupted = True
-            except Exception as e:
-                print(f"\n[Error: {e}]")
-                break
+            # Stream response
+            if _RICH and stream_ctrl:
+                try:
+                    resp, eval_tokens = stream_ctrl.stream_response(
+                        conv.get_messages(), SYSTEM_PROMPT)
+                except StreamCancelled:
+                    print("[Interrupted]")
+                    break
+                except Exception as e:
+                    if _RICH:
+                        console.print(ui.render_error(str(e)))
+                    else:
+                        print(f"[Error: {e}]")
+                    break
+            else:
+                display.reset()
+                try:
+                    for chunk in client.chat_stream(conv.get_messages(), SYSTEM_PROMPT):
+                        if interrupted:
+                            break
+                        display.feed(chunk)
+                except KeyboardInterrupt:
+                    interrupted = True
+                except Exception as e:
+                    print(f"\n[Error: {e}]")
+                    break
+                display.flush()
+                print()
+                resp = display.get_full_response()
 
-            display.flush()
-            print()  # newline after streaming output
+                if interrupted:
+                    print("[Interrupted]")
+                    break
 
-            resp = display.get_full_response()
-            if not resp.strip():
+            if not resp or not resp.strip():
                 break
 
             conv.add_assistant(resp)
             conv.update_tokens(client.last_prompt_tokens)
 
-            if interrupted:
-                print("[Interrupted]")
-                break
+            # Save assistant response to DB
+            if db:
+                db.add_message(session_id, "assistant", resp)
+                db.update_session_tokens(session_id, conv.total_prompt_tokens)
 
-            # Parse tool calls from the response
+            # Parse tool calls
             _, calls = parse_tool_calls(resp)
             if not calls:
-                break  # No tool calls -- turn is done
+                break
 
-            # Execute each tool call
+            # Execute tools
             results = []
             for tc in calls:
                 if tc.tool == "__invalid__":
-                    r = tool_reg.ToolResult(False, tc.params.get("error", "Invalid tool call"))
-                    print(f"  [error] {r.output}")
+                    r = tool_reg.ToolResult(False, tc.params.get("error", "Invalid"))
+                    if _RICH:
+                        console.print(ui.render_error(r.output))
+                    else:
+                        print(f"  [error] {r.output}")
                 else:
-                    # Show brief tool invocation info
                     desc = tc.params.get("command",
                            tc.params.get("file_path",
-                           str(tc.params)))[:80]
-                    print(f"  [{tc.tool}] {desc}")
+                           tc.params.get("pattern",
+                           str(tc.params))))[:80]
+
+                    # Safety check for bash commands
+                    if tc.tool == "bash":
+                        warning = check_destructive(tc.params.get("command", ""))
+                        if warning:
+                            if _RICH:
+                                console.print(ui.render_error(warning))
+                            else:
+                                print(f"  {warning}")
+                            try:
+                                confirm = input("  Proceed? (y/n): ").strip().lower()
+                            except (EOFError, KeyboardInterrupt):
+                                confirm = "n"
+                            if confirm != "y":
+                                r = tool_reg.ToolResult(False, "Command cancelled by user")
+                                results.append(tool_reg.format_result(tc.tool, r))
+                                continue
+
+                    if _RICH:
+                        console.print(ui.render_tool_call(tc.tool, desc))
+
                     r = tool_reg.dispatch(tc.tool, tc.params)
-                    # Show brief preview of result
-                    preview = r.output[:200] + ("..." if len(r.output) > 200 else "")
-                    for line in preview.split("\n")[:5]:
-                        print(f"    {line}")
+
+                    if _RICH:
+                        console.print(ui.render_tool_result(tc.tool, r.output, r.success))
+                    else:
+                        print(f"  [{tc.tool}] {desc}")
+                        preview = r.output[:200] + ("..." if len(r.output) > 200 else "")
+                        for line in preview.split("\n")[:5]:
+                            print(f"    {line}")
 
                 results.append(tool_reg.format_result(tc.tool, r))
                 errors = errors + 1 if not r.success else 0
@@ -164,20 +355,21 @@ def main():
             turns += 1
 
             if errors >= MAX_CONSECUTIVE_ERRORS:
-                print(f"[{errors} consecutive errors -- stopping tool loop]")
+                print(f"[{errors} consecutive errors]")
                 break
 
         if turns >= MAX_TOOL_TURNS:
             print(f"[Tool limit ({MAX_TOOL_TURNS}) reached]")
 
-        # === 3-Tier Context Management (Claude Code style) ===
+        # === Context status ===
         conv.update_tokens(client.last_prompt_tokens)
+        if _RICH and conv.total_prompt_tokens > 0:
+            console.print(ui.render_context_status(conv.total_prompt_tokens, CONTEXT_WINDOW))
 
-        # Tier 1: Clear old tool results (fast, no API call)
+        # === 3-Tier Context Management ===
         if conv.needs_result_clearing():
             conv.clear_old_tool_results()
 
-        # Tier 2: Auto-compaction (LLM summarization)
         if conv.needs_compaction():
             print("[Compacting conversation...]")
             try:
@@ -185,21 +377,22 @@ def main():
                 summary = compact(client, conv.get_messages(), SYSTEM_PROMPT)
                 conv.apply_compaction_summary(summary)
                 print("[Compaction complete]")
-            except ImportError:
-                # compaction.py not yet implemented -- fall through to Tier 3
-                pass
             except Exception as e:
                 print(f"[Compaction failed: {e}]")
 
-            # Tier 3: Emergency truncate (fallback if compaction failed or unavailable)
             if conv.needs_emergency_truncate():
                 conv.emergency_truncate()
                 print("[Emergency truncation applied]")
 
+    # Cleanup
+    if db:
+        db.close()
+    print("Goodbye!")
+
 
 def _register_optional_tools(ctx):
-    """Register Phase 2 tools if they're available. Silently skip if not."""
-    optional_tools = [
+    """Register Phase 2 tools if available."""
+    optional = [
         ("shadow_code.tools.read_file", "ReadFileTool"),
         ("shadow_code.tools.edit_file", "EditFileTool"),
         ("shadow_code.tools.write_file", "WriteFileTool"),
@@ -207,14 +400,13 @@ def _register_optional_tools(ctx):
         ("shadow_code.tools.grep_tool", "GrepTool"),
         ("shadow_code.tools.list_dir", "ListDirTool"),
     ]
-    for module_path, class_name in optional_tools:
+    for mod_path, cls_name in optional:
         try:
             import importlib
-            mod = importlib.import_module(module_path)
-            tool_class = getattr(mod, class_name)
-            tool_reg.register(tool_class(ctx))
+            mod = importlib.import_module(mod_path)
+            tool_reg.register(getattr(mod, cls_name)(ctx))
         except (ImportError, AttributeError):
-            pass  # Tool not yet implemented -- skip silently
+            pass
 
 
 if __name__ == "__main__":
