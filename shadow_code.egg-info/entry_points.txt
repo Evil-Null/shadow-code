@@ -1,0 +1,2 @@
+[console_scripts]
+shadow-code = shadow_code.main:main

@@ -153,8 +153,55 @@ def main():
             print(f"  Messages: {len(conv.get_messages())}")
             print(f"  Tokens:   {conv.total_prompt_tokens}")
             print(f"  Tools:    {', '.join(tool_reg._REGISTRY.keys())}")
+            print(f"  Skills:   {len(list_skills())}")
             if session_id:
                 print(f"  Session:  #{session_id}")
+            continue
+
+        if user_input.startswith("/cd"):
+            target = user_input[3:].strip()
+            if not target:
+                print(f"  CWD: {ctx.cwd}")
+            else:
+                import os as _os
+                new = _os.path.normpath(_os.path.join(ctx.cwd, _os.path.expanduser(target)))
+                if _os.path.isdir(new):
+                    ctx.cwd = new
+                    print(f"  CWD: {ctx.cwd}")
+                else:
+                    print(f"  Not a directory: {new}")
+            continue
+
+        if user_input == "/version":
+            from . import __version__
+            print(f"  shadow-code v{__version__}")
+            print(f"  Model: {MODEL_NAME}")
+            print(f"  Context: {CONTEXT_WINDOW // 1024}K")
+            continue
+
+        if user_input == "/history":
+            msgs = conv.get_messages()
+            if not msgs:
+                print("  No messages yet")
+            else:
+                for i, m in enumerate(msgs[-10:], max(1, len(msgs) - 9)):
+                    role = m["role"]
+                    preview = m["content"][:80].replace("\n", " ")
+                    print(f"  {i:3}. [{role:9}] {preview}...")
+            continue
+
+        if user_input == "/compact":
+            if conv.total_prompt_tokens > 0:
+                print("[Compacting conversation...]")
+                try:
+                    from .compaction import compact
+                    summary = compact(client, conv.get_messages(), SYSTEM_PROMPT)
+                    conv.apply_compaction_summary(summary)
+                    print("[Compaction complete]")
+                except Exception as e:
+                    print(f"[Compaction failed: {e}]")
+            else:
+                print("  Nothing to compact")
             continue
 
         if user_input == "/help":
@@ -164,9 +211,14 @@ def main():
                 ("/exit", "Exit shadow-code"),
                 ("/tokens", "Show context usage"),
                 ("/info", "Show session info"),
+                ("/cd [path]", "Show or change working directory"),
+                ("/compact", "Manually compact conversation"),
+                ("/history", "Show last 10 messages"),
+                ("/version", "Show version info"),
                 ("/save [name]", "Save session"),
                 ("/load [id]", "Load session"),
                 ("/list", "List saved sessions"),
+                ("/skills", "List available skills"),
             ]
             # Add skills to help
             for skill_name, skill_desc in list_skills():
