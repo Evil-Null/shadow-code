@@ -220,9 +220,22 @@ def main():
                 ("/list", "List saved sessions"),
                 ("/skills", "List available skills"),
             ]
-            # Add skills to help
+            # Add skills
             for skill_name, skill_desc in list_skills():
                 cmds.append((f"/{skill_name}", skill_desc))
+            # Keyboard shortcuts
+            keys = [
+                ("", ""),  # separator
+                ("Ctrl+C", "Stop current generation"),
+                ("Ctrl+D", "Exit"),
+                ("Ctrl+X", "Exit"),
+                ("Ctrl+L", "Clear screen"),
+                ("Ctrl+U", "Clear input line"),
+                ("Alt+Enter", "New line (multiline input)"),
+                ("Up/Down", "Command history"),
+                ("Ctrl+R", "Search history"),
+            ]
+            cmds.extend(keys)
             if _RICH:
                 console.print(ui.render_help(cmds))
             else:
