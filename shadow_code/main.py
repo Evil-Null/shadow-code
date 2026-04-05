@@ -439,22 +439,23 @@ def _show_context_status(used: int, total: int, last_eval: int,
                          console=None, ui=None):
     """Show context usage after every turn. Works in both Rich and plain mode."""
     pct = (used / total * 100) if total else 0
-    bar_width = 30
+    bar_width = 20
     filled = int(bar_width * pct / 100)
-    bar = "#" * filled + "-" * (bar_width - filled)
+    bar = "=" * filled + "-" * (bar_width - filled)
 
     if console and ui:
         console.print(ui.render_context_status(used, total))
     else:
-        # Color codes for plain terminal
+        # Soft ANSI colors (Claude Code inspired)
         if pct < 50:
-            color = "\033[32m"  # green
+            color = "\033[38;5;71m"   # soft green
         elif pct < 75:
-            color = "\033[33m"  # yellow
+            color = "\033[38;5;179m"  # soft amber
         else:
-            color = "\033[31m"  # red
+            color = "\033[38;5;167m"  # soft red
+        dim = "\033[2m"
         reset = "\033[0m"
-        print(f"  {color}[{bar}] {used//1000}K/{total//1000}K ({pct:.0f}%) | last: {last_eval} tokens{reset}")
+        print(f"  {color}[{bar}] {used//1000}K/{total//1000}K{reset} {dim}({pct:.0f}%){reset}")
 
 
 if __name__ == "__main__":
