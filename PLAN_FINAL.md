@@ -1,8 +1,8 @@
 # Shadow Code -- Final Implementation Plan
 
-> Version: 3.0 | Date: 2026-04-05
-> Status: FINAL (5-Eye Team Reviewed, Challenge v2 fixes applied)
-> History: PLAN.md (v1) -- CHALLENGE.md -- PLAN_FINAL v2 -- Challenge v2 -- this v3
+> Version: 4.0 | Date: 2026-04-05
+> Status: FINAL (5-Eye Team Reviewed, Challenge v2+v3 all fixes applied)
+> History: v1 -- Challenge -- v2 -- Challenge v2 -- v3 -- Challenge v3 -- this v4
 
 ---
 
@@ -170,7 +170,7 @@ import os
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = os.environ.get("SHADOW_MODEL", "shadow-gemma:latest")
 CONTEXT_WINDOW = 131_072
-TRUNCATION_RATIO = 0.75
+# Thresholds are in conversation.py (0.55, 0.65, 0.85)
 MAX_TOOL_TURNS = 20
 MAX_CONSECUTIVE_ERRORS = 3
 TOOL_OUTPUT_MAX_CHARS = 30_000
@@ -218,15 +218,24 @@ After each tool call, you will receive:
 
 Use the result to answer the user or continue working.
 
-## Full Example 1
+## Full Example
 
-User asks: "what files are here?"
-Assistant calls bash with command "ls -la", gets file listing, responds with summary.
+NOTE: The exact few-shot format (with or without JSON tool_call syntax inline)
+will be determined by Phase 0 validation results. If the model follows JSON
+examples reliably, we include them. If text descriptions work better, we use those.
+Phase 0 Test 0.3 (few-shot vs zero-shot) decides this.
 
-## Full Example 2
+Placeholder -- one of these two styles will be chosen:
 
-User asks: "read main.py and fix the typo on line 5"
-Assistant calls read_file with file_path, sees the typo, then calls edit_file with old_string/new_string.
+Style A (JSON -- if Phase 0 confirms model follows it):
+User: "what files are here?"
+Assistant: Let me check.
+<tool_call> {"tool":"bash","params":{"command":"ls -la"}} </tool_call>
+(receives tool_result, then responds with file listing)
+
+Style B (text description -- fallback if JSON examples confuse the model):
+User: "what files are here?"
+Assistant calls bash with "ls -la", gets listing, responds with summary.
 
 # Available Tools
 
@@ -579,12 +588,8 @@ from ..config import BASH_DEFAULT_TIMEOUT, BASH_MAX_TIMEOUT, INTERACTIVE_CMDS
 class BashTool(BaseTool):
     name = "bash"
 
-    def __init__(self, cwd: str):
-        self._cwd = cwd
-
-    @property
-    def cwd(self) -> str:
-        return self._cwd
+    def __init__(self, ctx):  # ctx: ToolContext
+        self.ctx = ctx
 
     def validate(self, params: dict) -> str | None:
         if "command" not in params: return "Missing required: command"
@@ -602,7 +607,7 @@ class BashTool(BaseTool):
             proc = subprocess.Popen(command, shell=True,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL, text=True,
-                cwd=self._cwd, preexec_fn=os.setsid)
+                cwd=self.ctx.cwd, preexec_fn=os.setsid)
             stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
@@ -611,20 +616,18 @@ class BashTool(BaseTool):
         except Exception as e:
             return ToolResult(False, f"Error: {e}")
 
-        # Track CWD changes: run pwd after every successful command
-        # This handles: cd, pushd, popd, source scripts, etc.
+        # CWD tracking: detect cd/pushd commands only (SAFE -- never re-executes command)
         if proc.returncode == 0:
+            import shlex
             try:
-                pwd_result = subprocess.run(
-                    f"cd {self._cwd} && {command} && pwd",
-                    shell=True, capture_output=True, text=True,
-                    timeout=5, stdin=subprocess.DEVNULL)
-                if pwd_result.returncode == 0:
-                    new_cwd = pwd_result.stdout.strip().split('\n')[-1]
-                    if os.path.isdir(new_cwd):
-                        self.ctx.cwd = new_cwd  # update shared ToolContext
-            except Exception:
-                pass  # CWD tracking failure is non-fatal
+                tokens = shlex.split(command)
+            except ValueError:
+                tokens = command.split()
+            if tokens and tokens[0] in ("cd", "pushd"):
+                target = tokens[1] if len(tokens) > 1 else os.path.expanduser("~")
+                new = os.path.normpath(os.path.join(self.ctx.cwd, os.path.expanduser(target)))
+                if os.path.isdir(new):
+                    self.ctx.cwd = new
 
         parts = []
         if stdout.strip(): parts.append(stdout.rstrip())
@@ -636,21 +639,24 @@ class BashTool(BaseTool):
 ### 4.11 main.py
 
 ```python
-import sys, os, signal
-from .config import MODEL_NAME, MAX_TOOL_TURNS, MAX_CONSECUTIVE_ERRORS
+import sys, os, signal, platform
+from datetime import datetime
+from .config import MODEL_NAME, MAX_TOOL_TURNS, MAX_CONSECUTIVE_ERRORS, CONTEXT_WINDOW
 from .ollama_client import OllamaClient
-from .prompt import get_system_prompt
+from .prompt import SYSTEM_PROMPT  # static constant, NOT a function
 from .parser import parse_tool_calls
 from .conversation import Conversation
 from .display import StreamDisplay
+from .tool_context import ToolContext
 from . import tools as tool_reg
 
 def main():
     cwd = os.getcwd()
+    ctx = ToolContext(cwd)  # shared state for all tools
 
     # Register tools (Phase 1: only bash)
     from .tools.bash import BashTool
-    tool_reg.register(BashTool(cwd))
+    tool_reg.register(BashTool(ctx))
 
     client = OllamaClient()
     ok, msg = client.health_check()
@@ -663,9 +669,9 @@ def main():
     print("Commands: /help /clear /exit /tokens\n")
 
     conv = Conversation()
-    system = get_system_prompt(cwd)
     display = StreamDisplay()
     interrupted = False
+    first_message = True  # track first message for env prefix
 
     def on_sigint(s, f):
         nonlocal interrupted
@@ -681,13 +687,23 @@ def main():
         if not user_input: continue
         if user_input == "/exit": break
         if user_input == "/clear":
-            conv.clear(); print("[Cleared]"); continue
+            conv.clear(); first_message = True; print("[Cleared]"); continue
         if user_input == "/tokens":
-            print(f"Prompt tokens: {conv.total_prompt_tokens}"); continue
+            pct = (conv.total_prompt_tokens / CONTEXT_WINDOW * 100) if CONTEXT_WINDOW else 0
+            print(f"Prompt: {conv.total_prompt_tokens} tokens ({pct:.0f}% of {CONTEXT_WINDOW})"); continue
         if user_input == "/help":
             print("/clear /exit /tokens"); continue
 
-        conv.add_user(user_input)
+        # Inject environment info on first message (keeps system prompt static for KV cache)
+        if first_message:
+            shell = os.environ.get("SHELL", "/bin/bash").rsplit("/", 1)[-1]
+            env_prefix = (f"[Environment: CWD={ctx.cwd}, "
+                         f"Platform={platform.system()} {platform.release()}, "
+                         f"Shell={shell}, Date={datetime.now().strftime('%Y-%m-%d')}]\n\n")
+            conv.add_user(env_prefix + user_input)
+            first_message = False
+        else:
+            conv.add_user(user_input)
         turns = 0
         errors = 0
 
@@ -695,7 +711,7 @@ def main():
             interrupted = False
             display.reset()
             try:
-                for chunk in client.chat_stream(conv.get_messages(), system):
+                for chunk in client.chat_stream(conv.get_messages(), SYSTEM_PROMPT):
                     if interrupted: break
                     display.feed(chunk)
             except KeyboardInterrupt:
@@ -752,7 +768,7 @@ def main():
             print("[Compacting conversation...]")
             try:
                 from .compaction import compact
-                summary = compact(client, conv.get_messages(), system)
+                summary = compact(client, conv.get_messages(), SYSTEM_PROMPT)
                 conv.apply_compaction_summary(summary)
                 print("[Compaction complete]")
             except Exception as e:
@@ -829,13 +845,11 @@ Ollama-ს KV cache ტესტით დადასტურდა:
 **Strategy:** system prompt უნდა იყოს 100% სტატიკური (არასოდეს შეიცვლება სესიის განმავლობაში). დინამიკური ინფორმაცია (CWD, date) პირველ user message-ში იგზავნება.
 
 ```python
-# prompt.py -- STATIC system prompt (never changes during session)
-def get_system_prompt() -> str:  # no arguments! fully static
-    return """You are Shadow..."""
+# prompt.py -- SYSTEM_PROMPT is a module-level constant (not a function)
+from .prompt import SYSTEM_PROMPT  # byte-identical every request -> KV cache hit
 
-# main.py -- dynamic info as first user message
-env_info = f"[Environment: CWD={cwd}, Date={date}, Shell={shell}]"
-conv.add_user(env_info + "\n\n" + user_input)  # only on first message
+# main.py -- dynamic info as first user message (see section 4.11)
+# first_message flag ensures env prefix is added only once
 ```
 
 ### 6.1 Auto-Compaction (Claude Code-ის მსგავსი)
@@ -1229,27 +1243,28 @@ Phase 1 (Minimal):
   TEST: "list files" end-to-end
 
 Phase 2 (Full tools):
-  12. tools/read_file.py
-  13. tools/write_file.py
-  14. tools/edit_file.py
-  15. tools/glob_tool.py
-  16. tools/grep_tool.py
-  17. tools/list_dir.py
+  13. tools/read_file.py
+  14. tools/write_file.py
+  15. tools/edit_file.py
+  16. tools/glob_tool.py
+  17. tools/grep_tool.py
+  18. tools/list_dir.py
   TEST: all tools end-to-end
 
 Phase 2.5 (Context Management -- Claude Code style):
-  18. KV cache optimization (static system prompt, dynamic in user msg)
-  19. shadow_code/compaction.py (auto-compaction via LLM summarization)
-  20. Function result clearing (old tool results -> stubs)
-  21. Context management flow in main.py
+  19. KV cache optimization (static system prompt, dynamic in user msg)
+  20. shadow_code/compaction.py (auto-compaction via LLM summarization)
+  21. Function result clearing (old tool results -> stubs)
+  22. Context management flow in main.py
   TEST: long conversation triggers compaction
 
-Phase 3 (Polish):
-  22. Rich terminal output
-  23. prompt_toolkit REPL
-  24. Destructive command warnings
-  25. Session persistence
-  26. Context status display
+Phase 3 (Polish -- deepseek-chat UI patterns):
+  23. ui.py (Rich panels, markdown, spinners)
+  24. streaming.py (Rich Live + StreamBuffer)
+  25. prompt.py REPL (prompt_toolkit + FileHistory + completer)
+  26. db.py (SQLite session persistence)
+  27. Destructive command warnings
+  28. Context status display
   FULL TESTING
 ```
 
