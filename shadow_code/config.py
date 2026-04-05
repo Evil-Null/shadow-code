@@ -11,4 +11,4 @@ BASH_MAX_TIMEOUT = 600
 MAX_LINES_TO_READ = 2000
 INTERACTIVE_CMDS = {"vim", "vi", "nano", "less", "more", "top", "htop", "man"}
 BLOCKED_PATHS = {"/dev/zero", "/dev/urandom", "/dev/random", "/dev/stdin", "/dev/stdout", "/dev/stderr"}
-MODEL_OPTIONS = {"temperature": 0.3, "num_ctx": CONTEXT_WINDOW}
+MODEL_OPTIONS = {"temperature": 0.3, "num_cty": CONTEXT_WINDOW}
