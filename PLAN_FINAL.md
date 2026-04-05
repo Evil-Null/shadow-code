@@ -957,31 +957,170 @@ def clear_old_tool_results(messages: list[dict]) -> list[dict]:
 
 ---
 
-## 7. Phase 3: Polish
+## 7. Phase 3: Polish (deepseek-chat UI patterns reused)
 
-### 7.1 Rich terminal output
-- rich.markdown.Markdown for model output
-- rich.syntax.Syntax for code blocks
-- Colors: tool_name=cyan, success=green, error=red
+Source: github.com/Evil-Null/deepseek-chat -- same author's Python CLI with Rich UI.
+We reuse its proven UI architecture but add tool calling display.
 
-### 7.2 prompt_toolkit REPL
-- History (up/down, persistent)
-- Multiline (Alt+Enter)
-- Ctrl+C = cancel generation
+### 7.1 ui.py -- UIRenderer (from deepseek-chat)
 
-### 7.3 Destructive command warnings
+```python
+from rich.console import Group
+from rich.panel import Panel
+from rich.markdown import Markdown
+from rich.text import Text
+from rich.rule import Rule
+from rich.spinner import Spinner
+from rich.table import Table
+
+class UIRenderer:
+    def render_welcome(self) -> Panel:
+        content = Text()
+        content.append("Shadow Code", style="bold cyan")
+        content.append(f" v0.1.0\n", style="dim")
+        content.append("Local AI Coding Assistant\n", style="dim")
+        content.append("Model: shadow-gemma:latest | ", style="dim")
+        content.append("Type /help for commands", style="dim italic")
+        return Panel(content, border_style="cyan", padding=(1, 2))
+
+    def render_thinking(self, model: str) -> Panel:
+        spinner = Spinner("dots", text=Text(f" {model} is thinking...", style="cyan"))
+        return Panel(spinner, border_style="blue")
+
+    def render_streaming(self, text: str) -> Panel:
+        return Panel(
+            Markdown(text) if text.strip() else Text("..."),
+            border_style="blue",
+            subtitle="[dim]streaming...[/dim]",
+        )
+
+    def render_response(self, text: str, tokens: int = 0) -> Panel:
+        subtitle = f"[dim]{tokens:,} tokens[/dim]" if tokens else ""
+        return Panel(Markdown(text), border_style="blue", subtitle=subtitle)
+
+    def render_tool_call(self, tool: str, desc: str) -> Panel:
+        return Panel(
+            Text(desc, style="dim"),
+            border_style="cyan",
+            title=f"[bold cyan]{tool}[/bold cyan]",
+        )
+
+    def render_tool_result(self, tool: str, output: str, success: bool) -> Panel:
+        style = "green" if success else "red"
+        preview = output[:500] + ("..." if len(output) > 500 else "")
+        return Panel(
+            Text(preview),
+            border_style=style,
+            title=f"[bold {style}]{tool}[/bold {style}]",
+        )
+
+    def render_error(self, message: str) -> Panel:
+        return Panel(Text(message, style="bold red"), border_style="red",
+                     title="[bold red]Error[/bold red]")
+
+    def render_context_status(self, used: int, total: int) -> Text:
+        pct = (used / total) * 100 if total else 0
+        color = "green" if pct < 50 else "yellow" if pct < 75 else "red"
+        text = Text()
+        text.append(f"  Context: ", style="dim")
+        text.append(f"{used//1000}K/{total//1000}K", style=f"bold {color}")
+        text.append(f" ({pct:.0f}%)", style="dim")
+        return text
+```
+
+### 7.2 streaming.py -- StreamController with Rich Live (from deepseek-chat)
+
+```python
+from rich.live import Live
+from rich.console import Console
+
+class StreamController:
+    def __init__(self, client, ui, console):
+        self.client = client
+        self.ui = ui
+        self.console = console
+
+    def stream_response(self, messages, system) -> tuple[str, int]:
+        """Stream with live Rich panel. Returns (full_text, eval_tokens)."""
+        accumulated = ""
+        buffer = StreamBuffer()  # our tool_call buffer logic
+
+        with Live(self.ui.render_thinking("shadow-gemma"),
+                  console=self.console, refresh_per_second=10) as live:
+            for chunk in self.client.chat_stream(messages, system):
+                text = buffer.feed(chunk)
+                if text:
+                    accumulated += text
+                    live.update(self.ui.render_streaming(accumulated))
+
+            buffer.flush()
+            live.update(self.ui.render_response(
+                accumulated, self.client.last_eval_tokens))
+
+        return buffer.get_full_response(), self.client.last_eval_tokens
+```
+
+Key difference from deepseek-chat: our StreamBuffer hides `<tool_call>` JSON.
+The Rich Live panel shows clean markdown, never raw JSON.
+
+### 7.3 prompt.py REPL (from deepseek-chat)
+
+```python
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.completion import WordCompleter
+
+def create_prompt_session() -> PromptSession:
+    history_path = Path("~/.shadow-code/prompt_history").expanduser()
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    bindings = KeyBindings()
+
+    @bindings.add("escape", "enter")
+    def multiline(event):
+        event.current_buffer.insert_text("\n")
+
+    @bindings.add("c-d")
+    def exit_handler(event):
+        event.app.exit(result=None)
+
+    completer = WordCompleter(["/help","/clear","/exit","/tokens",
+                               "/save","/load","/model","/info"])
+
+    return PromptSession(
+        history=FileHistory(str(history_path)),
+        key_bindings=bindings,
+        completer=completer,
+        multiline=False,
+        enable_history_search=True,
+    )
+```
+
+### 7.4 db.py -- Session Persistence (from deepseek-chat)
+
+SQLite with WAL mode, same pattern as deepseek-chat:
+- ~/.shadow-code/sessions.db
+- Tables: sessions (id, model, created, updated), messages (session_id, role, content, timestamp)
+- /save, /load, /list, /delete commands
+- Auto-save on clean exit
+
+### 7.5 Destructive command warnings
+
 ```python
 DESTRUCTIVE = [r'\brm\s+-rf\b', r'\bgit\s+push\s+--force\b',
                r'\bgit\s+reset\s+--hard\b', r'\bdrop\s+table\b']
 ```
-User confirmation (y/n) before execution.
+User confirmation via prompt_toolkit before execution.
 
-### 7.4 Session save/load
-- ~/.shadow-code/sessions/{timestamp}.json
-- /save, /load commands
+### 7.6 Context status
 
-### 7.5 Context status
-- After each turn: [Context: 45K/128K tokens]
+After each turn, show context usage (color-coded):
+```
+  Context: 45K/128K (35%)     <- green
+  Context: 85K/128K (66%)     <- yellow  
+  Context: 110K/128K (86%)    <- red
+```
 
 ---
 
