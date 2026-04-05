@@ -97,7 +97,7 @@ class StreamController:
                 self.ui.render_thinking(),
                 console=self.console,
                 refresh_per_second=10,
-                transient=True,
+                transient=False,  # keep final response visible on screen
             ) as live:
                 for chunk in self.client.chat_stream(messages, system):
                     visible_text = self._feed_and_capture(chunk)
