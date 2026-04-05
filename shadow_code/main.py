@@ -26,6 +26,7 @@ from .prompt import SYSTEM_PROMPT
 from .tool_context import ToolContext
 from . import tools as tool_reg
 from .safety import check_destructive
+from .skills import get_skill, list_skills
 
 # Optional imports -- graceful fallback
 try:
@@ -167,11 +168,20 @@ def main():
                 ("/load [id]", "Load session"),
                 ("/list", "List saved sessions"),
             ]
+            # Add skills to help
+            for skill_name, skill_desc in list_skills():
+                cmds.append((f"/{skill_name}", skill_desc))
             if _RICH:
                 console.print(ui.render_help(cmds))
             else:
                 for cmd, desc in cmds:
                     print(f"  {cmd:20} {desc}")
+            continue
+
+        if user_input == "/skills":
+            print("  Available skills:")
+            for skill_name, skill_desc in list_skills():
+                print(f"    /{skill_name:15} {skill_desc}")
             continue
 
         if user_input.startswith("/save"):
@@ -217,7 +227,7 @@ def main():
                 if sessions:
                     for s in sessions:
                         name = s.get("name", "") or f"Session #{s['id']}"
-                        msgs = s.get("msg_count", 0)
+                        msgs = s.get("message_count", 0)
                         print(f"  #{s['id']:4}  {name:30} ({msgs} msgs)")
                 else:
                     print("  No saved sessions")
@@ -225,8 +235,21 @@ def main():
                 print("  [DB not available]")
             continue
 
+        # Check if it's a skill command (e.g., /commit, /simplify, /review file.py)
         if user_input.startswith("/"):
-            print(f"  Unknown command: {user_input.split()[0]}. Type /help")
+            parts = user_input[1:].split(None, 1)
+            skill_name = parts[0] if parts else ""
+            skill_args = parts[1] if len(parts) > 1 else ""
+            skill = get_skill(skill_name)
+            if skill:
+                desc, prompt_template = skill
+                # Inject skill prompt as user message
+                skill_msg = prompt_template
+                if skill_args:
+                    skill_msg += f"\n\nUser specified: {skill_args}"
+                user_input = skill_msg  # falls through to normal message handling below
+            else:
+                print(f"  Unknown command: /{skill_name}. Type /help")
             continue
 
         # === Inject environment on first message ===

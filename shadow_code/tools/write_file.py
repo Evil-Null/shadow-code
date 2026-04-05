@@ -27,6 +27,13 @@ class WriteFileTool(BaseTool):
         if existed:
             if os.path.isdir(path):
                 return ToolResult(False, f"Path is a directory: {path}")
+            # Enforce read-before-write for existing files (matches edit_file behavior)
+            if not self.ctx.was_file_read(path):
+                return ToolResult(
+                    False,
+                    f"File has not been read yet: {path}\n"
+                    "You must use read_file before overwriting an existing file."
+                )
             try:
                 old_size = os.path.getsize(path)
             except OSError:
