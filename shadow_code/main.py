@@ -388,10 +388,24 @@ def main():
                     else:
                         print(f"  [error] {r.output}")
                 else:
-                    desc = tc.params.get("command",
-                           tc.params.get("file_path",
-                           tc.params.get("pattern",
-                           str(tc.params))))[:80]
+                    # Build descriptive tool call summary
+                    if tc.tool == "bash":
+                        desc = tc.params.get("command", "")[:100]
+                    elif tc.tool in ("read_file", "write_file", "edit_file"):
+                        desc = tc.params.get("file_path", "")
+                        if tc.tool == "edit_file":
+                            old = tc.params.get("old_string", "")[:40]
+                            new = tc.params.get("new_string", "")[:40]
+                            desc += f'  "{old}" -> "{new}"'
+                        elif tc.tool == "write_file":
+                            content_preview = tc.params.get("content", "")[:60]
+                            desc += f"  ({len(tc.params.get('content', ''))} chars)"
+                    elif tc.tool == "grep":
+                        desc = f'"{tc.params.get("pattern", "")}" in {tc.params.get("path", ".")}'
+                    elif tc.tool == "glob":
+                        desc = f'{tc.params.get("pattern", "")} in {tc.params.get("path", ".")}'
+                    else:
+                        desc = str(tc.params)[:80]
 
                     # Safety check for bash commands
                     if tc.tool == "bash":
@@ -418,9 +432,16 @@ def main():
                     if _RICH:
                         console.print(ui.render_tool_result(tc.tool, r.output, r.success))
                     else:
+                        status = "ok" if r.success else "fail"
                         print(f"  [{tc.tool}] {desc}")
-                        preview = r.output[:200] + ("..." if len(r.output) > 200 else "")
-                        for line in preview.split("\n")[:5]:
+                        # Show enough output to see what happened
+                        max_lines = 30 if tc.tool in ("read_file", "bash", "grep") else 15
+                        max_chars = 2000 if tc.tool in ("read_file", "write_file", "edit_file") else 800
+                        preview = r.output[:max_chars]
+                        if len(r.output) > max_chars:
+                            preview += f"\n    ... [{len(r.output) - max_chars} more chars]"
+                        lines = preview.split("\n")[:max_lines]
+                        for line in lines:
                             print(f"    {line}")
 
                 results.append(tool_reg.format_result(tc.tool, r))

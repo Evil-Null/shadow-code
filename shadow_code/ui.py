@@ -71,10 +71,23 @@ class UIRenderer:
 
     def render_tool_result(self, tool: str, output: str, success: bool) -> "Panel":
         color = _SUCCESS if success else _ERROR
-        preview = output[:500] + ("..." if len(output) > 500 else "")
+        # Show more output for file operations (code should be visible)
+        max_chars = 3000 if tool in ("read_file", "write_file", "edit_file", "bash") else 1000
+        preview = output[:max_chars] + (f"\n... [{len(output) - max_chars} more chars]" if len(output) > max_chars else "")
         title = f"[{color}]{tool}[/{color}]"
+
+        # Use syntax highlighting for file content
+        if tool in ("read_file", "bash", "grep") and len(preview) > 10:
+            from rich.syntax import Syntax
+            try:
+                body = Syntax(preview, "text", theme="monokai", line_numbers=False)
+            except Exception:
+                body = Text(preview, style="dim")
+        else:
+            body = Text(preview, style="dim")
+
         return Panel(
-            Text(preview, style=f"dim"),
+            body,
             border_style=color,
             box=SIMPLE,
             title=title,
