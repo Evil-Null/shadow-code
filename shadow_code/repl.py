@@ -74,6 +74,21 @@ def create_prompt_session():
         """Ctrl+D exits the REPL."""
         event.app.exit(result=None)
 
+    @bindings.add("c-x")
+    def _exit_cx(event):
+        """Ctrl+X exits the REPL."""
+        event.app.exit(result=None)
+
+    @bindings.add("c-l")
+    def _clear_screen(event):
+        """Ctrl+L clears the screen."""
+        event.app.renderer.clear()
+
+    @bindings.add("c-u")
+    def _clear_line(event):
+        """Ctrl+U clears the current input line."""
+        event.current_buffer.reset()
+
     # Slash command completer
     completer = WordCompleter(
         _SLASH_COMMANDS,
