@@ -295,14 +295,14 @@ def main():
             skill = get_skill(skill_name)
             if skill:
                 desc, prompt_template = skill
-                # Inject skill prompt as user message
                 skill_msg = prompt_template
                 if skill_args:
                     skill_msg += f"\n\nUser specified: {skill_args}"
-                user_input = skill_msg  # falls through to normal message handling below
+                user_input = skill_msg  # falls through to message handling below
+                # DO NOT continue -- let it fall through to send the skill prompt to the model
             else:
                 print(f"  Unknown command: /{skill_name}. Type /help")
-            continue
+                continue
 
         # === Inject environment on first message ===
         if first_message:
