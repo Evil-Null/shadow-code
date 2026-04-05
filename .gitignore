@@ -1,4 +1,12 @@
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 shadow_code.egg-info/
+dist/
+build/
+*.egg
+.venv/
+.env
+*.db
+~/.shadow-code/
