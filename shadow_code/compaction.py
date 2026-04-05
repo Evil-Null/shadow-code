@@ -1,62 +1,110 @@
 # shadow_code/compaction.py -- Auto-compaction via LLM summarization
 #
-# When context usage exceeds the compaction threshold (65%), the conversation
-# history is sent to the LLM with a special summarization prompt. The LLM
-# produces a structured summary that replaces old messages, freeing context
-# space while preserving essential information.
+# Adapted from Claude Code's compact/prompt.ts (9-section summary format).
 #
-# This follows the Claude Code pattern:
-#   1. Append COMPACT_PROMPT as a final user message
-#   2. Stream the response (non-displayed, just collect)
-#   3. Strip <analysis> tags, extract <summary> content
-#   4. Return the summary text for conversation.apply_compaction_summary()
+# When context exceeds 65%, conversation is sent to LLM for structured
+# summarization. The summary replaces old messages, freeing context space.
 
 import re
 
 from .ollama_client import OllamaClient
 
 
-COMPACT_PROMPT = """Your task is to create a detailed summary of the conversation so far.
-This summary will replace the conversation history to free up context space.
+# Aggressive no-tools preamble (from Claude Code -- prevents wasted turns)
+_NO_TOOLS = """CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
+Do NOT use bash, read_file, edit_file, write_file, glob, grep, or list_dir.
+You already have all the context you need in the conversation above.
+Your entire response must be plain text: an <analysis> block followed by a <summary> block.
+"""
 
-CRITICAL: Respond with TEXT ONLY. Do NOT use any tools.
+COMPACT_PROMPT = _NO_TOOLS + """Your task is to create a detailed summary of the conversation so far,
+paying close attention to the user's explicit requests and your previous actions.
+This summary should be thorough in capturing technical details, code patterns,
+and architectural decisions essential for continuing work without losing context.
 
-Your summary should include:
+Before providing your summary, wrap your analysis in <analysis> tags to organize
+your thoughts. In your analysis:
+1. Chronologically analyze each message. For each, identify:
+   - The user's explicit requests and intents
+   - Your approach to addressing them
+   - Key decisions, technical concepts, code patterns
+   - Specific file names, code snippets, function signatures, file edits
+   - Errors encountered and how they were fixed
+   - User feedback, especially corrections ("do it differently", "not that way")
+2. Double-check for technical accuracy and completeness.
 
-1. Primary Request: What the user asked for
-2. Files Modified: List of files read, edited, or created with key changes
-3. Errors and Fixes: Problems encountered and how they were resolved
-4. Current Work: What was being worked on immediately before this summary
-5. Pending Tasks: Any incomplete work
-6. Next Step: The next action to take
+Your summary should include these sections:
 
-Wrap your analysis in <analysis> tags (will be stripped), then provide the
-summary in <summary> tags.
+1. Primary Request and Intent: All of the user's explicit requests in detail
+2. Key Technical Concepts: Technologies, frameworks, patterns discussed
+3. Files and Code: Files examined, modified, or created. Include:
+   - Why each file is important
+   - Summary of changes made
+   - Key code snippets where relevant
+4. Errors and Fixes: All errors encountered, how fixed, user feedback on fixes
+5. Problem Solving: Problems solved, ongoing troubleshooting
+6. All User Messages: List ALL non-tool-result user messages (critical for intent tracking)
+7. Pending Tasks: Incomplete work explicitly requested
+8. Current Work: Precisely what was being worked on immediately before this summary,
+   with file names and code snippets
+9. Next Step: The next action directly in line with the user's most recent request.
+   Include direct quotes from the conversation showing exactly what task was in progress.
 
 <analysis>
-[Your analysis of the conversation]
+[Your chronological analysis of the conversation]
 </analysis>
 
 <summary>
-[Structured summary following the sections above]
+1. Primary Request and Intent:
+   [Detailed description]
+
+2. Key Technical Concepts:
+   - [Concept 1]
+   - [Concept 2]
+
+3. Files and Code:
+   - [File path]
+     - [Why important]
+     - [Changes made]
+     - [Code snippet if relevant]
+
+4. Errors and Fixes:
+   - [Error]: [How fixed]
+
+5. Problem Solving:
+   [Description]
+
+6. All User Messages:
+   - [Message 1]
+   - [Message 2]
+
+7. Pending Tasks:
+   - [Task 1]
+
+8. Current Work:
+   [Precise description with file names]
+
+9. Next Step:
+   [Next action with quotes from conversation]
 </summary>
+
+REMINDER: Do NOT call any tools. Respond with plain text only.
 """
 
 
 def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> str:
-    """Send conversation to LLM for summarization.
-
-    Appends the compaction prompt as a final user message, streams the
-    response (collecting it silently -- nothing is displayed), then
-    extracts the structured summary.
+    """Send conversation to LLM for summarization. Returns cleaned summary.
 
     Args:
-        client: OllamaClient instance for streaming chat.
-        messages: Current conversation messages (list of role/content dicts).
+        client: OllamaClient instance.
+        messages: Current conversation messages.
         system_prompt: The static system prompt.
 
     Returns:
         Cleaned summary text (analysis stripped, summary extracted).
+
+    Raises:
+        Exception: If streaming fails or response is empty.
     """
     compact_messages = messages + [{"role": "user", "content": COMPACT_PROMPT}]
 
@@ -64,30 +112,28 @@ def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> s
     for chunk in client.chat_stream(compact_messages, system_prompt):
         full_response += chunk
 
+    if not full_response.strip():
+        raise RuntimeError("Compaction produced empty response")
+
     return format_summary(full_response)
 
 
 def format_summary(raw: str) -> str:
-    """Strip <analysis> block and extract <summary> content.
+    """Strip <analysis>, extract <summary> content.
 
-    The compaction prompt instructs the model to wrap its reasoning in
-    <analysis> tags (which we discard) and the actual summary in <summary>
-    tags (which we keep). If the model doesn't use tags, the full cleaned
-    text is returned as-is.
-
-    Args:
-        raw: Raw model response from the compaction call.
-
-    Returns:
-        Cleaned summary text.
+    The model wraps reasoning in <analysis> (discarded) and the
+    actual summary in <summary> (kept). If no tags, returns cleaned text.
     """
-    # Remove <analysis>...</analysis> block (greedy within tags, DOTALL for newlines)
+    # Remove analysis block
     cleaned = re.sub(r"<analysis>.*?</analysis>", "", raw, flags=re.DOTALL)
 
-    # Extract content from <summary>...</summary>
+    # Extract summary content
     match = re.search(r"<summary>(.*?)</summary>", cleaned, re.DOTALL)
     if match:
-        return match.group(1).strip()
+        summary = match.group(1).strip()
+        # Replace XML-style tags with readable headers
+        summary = summary.replace("<summary>", "").replace("</summary>", "")
+        return summary
 
-    # No <summary> tags -- return whatever remains after stripping analysis
+    # No tags -- return cleaned text
     return cleaned.strip()

@@ -173,3 +173,163 @@ Important:
 - Look at ALL commits, not just the most recent
 - Return the PR URL when done"""
 )
+
+register_skill(
+    "remember",
+    "Save important information for future reference",
+    """The user wants to save something for future reference.
+
+1. Understand what they want to remember:
+   - A decision that was made and why
+   - A pattern or convention used in this project
+   - A bug fix approach that worked
+   - A configuration detail
+   - User preferences for how to work
+
+2. Create or update a memory file:
+   - Save to ~/.shadow-code/memory/ directory
+   - Use descriptive filenames (e.g., "db-migration-pattern.md", "user-preferences.md")
+   - Include: WHAT, WHY, and WHEN (date)
+   - Keep it concise but complete enough to be useful later
+
+3. If the user says "remember that..." or "don't forget...", extract the key
+   information and save it without asking unnecessary questions.
+
+4. If asked "what do you remember about X?", search the memory directory
+   with glob and grep for relevant files."""
+)
+
+register_skill(
+    "verify",
+    "Verify that code changes actually work",
+    """Verify that recent code changes work correctly.
+
+1. Identify what was changed:
+   - Run git diff to see recent changes
+   - Or check the conversation for files that were edited
+
+2. For each change, determine how to verify:
+   - If tests exist: run them (e.g., pytest, npm test, go test)
+   - If it's a script: execute it and check output
+   - If it's a server: start it and check it responds
+   - If it's a build: run the build and check for errors
+
+3. Run the verification:
+   - Execute the appropriate test/build/run command
+   - Capture and analyze the output
+   - Report: PASS (with evidence) or FAIL (with error details)
+
+4. If verification fails:
+   - Identify the root cause
+   - Fix the issue
+   - Re-verify
+
+IMPORTANT: Actually run the verification. Do not claim "should work" --
+prove it works by executing code and showing output."""
+)
+
+register_skill(
+    "init",
+    "Initialize shadow-code for a new project",
+    """Set up shadow-code for working with a new project directory.
+
+1. Explore the project structure:
+   - Run list_dir to see top-level files and directories
+   - Look for configuration files (package.json, pyproject.toml, Makefile, etc.)
+   - Look for README.md or documentation
+   - Check if it's a git repository (git status)
+
+2. Identify the project type:
+   - Language (Python, JavaScript/TypeScript, Go, Rust, etc.)
+   - Framework (React, Django, FastAPI, etc.)
+   - Build system (npm, pip, cargo, make, etc.)
+   - Test framework (pytest, jest, go test, etc.)
+
+3. Report findings to the user:
+   - Project type and language
+   - Key directories and their purpose
+   - Available commands (build, test, run)
+   - Any issues found (missing dependencies, broken config)
+
+4. Suggest next steps based on what was found."""
+)
+
+register_skill(
+    "test",
+    "Run tests and analyze results",
+    """Run the project's test suite and analyze results.
+
+1. Detect the test framework:
+   - Python: look for pytest.ini, setup.cfg, pyproject.toml [tool.pytest]
+   - JavaScript: look for jest.config, vitest.config, package.json scripts
+   - Go: go test ./...
+   - Rust: cargo test
+   - Or ask the user if unclear
+
+2. Run the tests:
+   - Use the appropriate command (pytest, npm test, etc.)
+   - Capture full output including failures
+
+3. Analyze results:
+   - Count passed/failed/skipped
+   - For failures: show the error, identify the failing test, suggest fix
+   - For errors: distinguish between test bugs and code bugs
+
+4. If tests fail:
+   - Read the failing test file
+   - Read the source code being tested
+   - Identify the root cause
+   - Fix and re-run"""
+)
+
+register_skill(
+    "refactor",
+    "Refactor code while preserving behavior",
+    """Refactor the specified code (file, function, or module).
+
+1. Read and understand the code completely with read_file
+2. Identify what to improve:
+   - Long functions that should be split
+   - Duplicated code that should be extracted
+   - Complex conditionals that should be simplified
+   - Poor naming that should be clarified
+   - Tight coupling that should be loosened
+
+3. Plan the refactoring:
+   - List each change you'll make
+   - Ensure behavior is preserved (no functional changes)
+   - Consider: will existing tests still pass?
+
+4. Execute changes with edit_file:
+   - Make one logical change at a time
+   - After each change, verify the code is still valid
+
+5. Verify:
+   - If tests exist, run them
+   - If no tests, explain what you changed and why it's safe"""
+)
+
+register_skill(
+    "search",
+    "Deep search across the codebase",
+    """Perform a thorough search across the codebase.
+
+1. Understand what the user is looking for:
+   - A specific function, class, or variable?
+   - A pattern or convention?
+   - Where something is used?
+   - How something is implemented?
+
+2. Use multiple search strategies:
+   - grep for exact text matches
+   - glob for file name patterns
+   - grep with regex for pattern matching
+   - Read key files that are likely relevant
+
+3. Report findings:
+   - List all matches with file_path:line_number
+   - Show relevant code context
+   - Explain how the pieces connect
+
+4. If searching for usage: trace the call chain from definition to all callers."""
+)
