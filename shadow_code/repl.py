@@ -1,7 +1,7 @@
 """prompt_toolkit REPL for shadow-code.
 
 Professional input experience with:
-  - Styled prompt with brand color
+  - Bordered input box (Claude Code style) that grows with text
   - Persistent file history (~/.shadow-code/prompt_history)
   - Bottom toolbar showing model, tokens, shortcuts
   - Alt+Enter for multiline input
@@ -65,6 +65,48 @@ if _HAS_PROMPT_TOOLKIT:
         }
     )
 
+# Box drawing characters for input frame
+_BOX_TOP_L = "╭"
+_BOX_TOP_R = "╮"
+_BOX_BOT_L = "╰"
+_BOX_BOT_R = "╯"
+_BOX_H = "─"
+_BOX_V = "│"
+_BOX_COLOR = "\033[38;5;240m"  # dark gray
+_BRAND_COLOR = "\033[38;5;173m"  # #d77757 approximate
+_RESET = "\033[0m"
+
+
+def _print_input_top(width: int = 0):
+    """Print the top border of the input box."""
+    import shutil
+
+    cols = width or shutil.get_terminal_size().columns
+    inner = cols - 2
+    label = " shadow "
+    bar_left = _BOX_H * 2
+    bar_right = _BOX_H * (inner - len(bar_left) - len(label))
+    print(
+        f"{_BOX_COLOR}{_BOX_TOP_L}{bar_left}"
+        f"{_BRAND_COLOR}{label}"
+        f"{_BOX_COLOR}{bar_right}{_BOX_TOP_R}{_RESET}"
+    )
+
+
+def _print_input_bottom(width: int = 0):
+    """Print the bottom border of the input box."""
+    import shutil
+
+    cols = width or shutil.get_terminal_size().columns
+    inner = cols - 2
+    hint = " Alt+Enter: newline │ /help "
+    bar_right = _BOX_H * max(0, inner - len(hint))
+    print(
+        f"{_BOX_COLOR}{_BOX_BOT_L}{bar_right}"
+        f"\033[2m{hint}\033[22m"
+        f"{_BOX_COLOR}{_BOX_BOT_R}{_RESET}"
+    )
+
 
 def create_prompt_session(state=None):
     """Create a prompt_toolkit PromptSession with styled prompt and toolbar.
@@ -119,6 +161,9 @@ def create_prompt_session(state=None):
 
             return make_toolbar_html(state)
 
+    def _continuation(width, line_number, is_soft_wrap):
+        return f"  {_BOX_COLOR}{_BOX_V}{_RESET} "
+
     return PromptSession(
         history=FileHistory(str(history_path)),
         key_bindings=bindings,
@@ -127,7 +172,7 @@ def create_prompt_session(state=None):
         enable_history_search=True,
         style=_PT_STYLE,
         bottom_toolbar=toolbar,
-        prompt_continuation=lambda width, line_number, is_soft_wrap: "   ... ",
+        prompt_continuation=_continuation,
     )
 
 
@@ -144,17 +189,19 @@ def get_input(session, model_name: str = "") -> str | None:
 
 
 def _get_input_prompt_toolkit(session) -> str | None:
-    """Get input using prompt_toolkit with styled prompt."""
+    """Get input with bordered input box."""
     try:
-        try:
-            from prompt_toolkit.formatted_text import HTML as _HTML
+        # Print top border
+        _print_input_top()
 
-            prompt = _HTML(
-                '<b><style fg="#d77757">shadow</style></b><style fg="#888888">></style> '
-            )
-        except ImportError:
-            prompt = "shadow> "
-        text = session.prompt(prompt)
+        # Prompt with left border
+        prompt_str = f"  {_BOX_COLOR}{_BOX_V}{_RESET} "
+
+        text = session.prompt(prompt_str)
+
+        # Print bottom border
+        _print_input_bottom()
+
         if text is None:
             return None
         return str(text.strip())
@@ -165,9 +212,11 @@ def _get_input_prompt_toolkit(session) -> str | None:
 
 
 def _get_input_fallback() -> str | None:
-    """Fallback input using built-in input()."""
+    """Fallback input with simple border."""
     try:
-        text = input("shadow> ")
+        _print_input_top()
+        text = input(f"  {_BOX_COLOR}{_BOX_V}{_RESET} ")
+        _print_input_bottom()
         return text.strip()
     except EOFError:
         return None
