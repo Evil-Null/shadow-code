@@ -1,25 +1,25 @@
 """prompt_toolkit REPL for shadow-code.
 
-Claude Code style input with:
-  - Top border line (╭───╮) with model info
-  - Text input area (no side borders -- clean look)
-  - Bottom border line (╰───╯) after input
+Claude Code style input with framed text area:
+  - Input box with ╭╮╰╯ rounded border
+  - Model name in top border
   - Bottom toolbar with status
-  - Alt+Enter for multiline, Ctrl+D/Ctrl+X to exit
-  - Tab-completion, history search
+  - Tab-completion, history, multiline (Alt+Enter)
 
 Falls back to built-in input() if prompt_toolkit is not installed.
 """
 
-import shutil
 from pathlib import Path
 
 try:
-    from prompt_toolkit import PromptSession
+    from prompt_toolkit import Application
     from prompt_toolkit.completion import WordCompleter
-    from prompt_toolkit.history import FileHistory
     from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import HSplit, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style as PTStyle
+    from prompt_toolkit.widgets import Frame, TextArea
 
     _HAS_PROMPT_TOOLKIT = True
 except ImportError:
@@ -43,142 +43,202 @@ _SLASH_COMMANDS = [
     "/cd",
 ]
 
-# Colors
-_BORDER = "\033[38;5;240m"  # dark gray
-_BRAND = "\033[38;5;173m"  # orange
-_DIM = "\033[2m"
-_RESET = "\033[0m"
-
-# Box drawing
-_TL = "\u256d"  # ╭
-_TR = "\u256e"  # ╮
-_BL = "\u2570"  # ╰
-_BR = "\u256f"  # ╯
-_H = "\u2500"  # ─
-
 # prompt_toolkit style
 _PT_STYLE = None
 if _HAS_PROMPT_TOOLKIT:
     _PT_STYLE = PTStyle.from_dict(
         {
+            "frame.border": "#888888",
+            "frame.label": "bold #d77757",
+            "text-area": "#e0e0e0",
+            "toolbar": "bg:#1a1a1a #888888",
+            "toolbar.key": "#d77757",
             "completion-menu.completion": "bg:#2d2d2d #e0e0e0",
             "completion-menu.completion.current": "bg:#d77757 #ffffff bold",
-            "completion-menu.meta.completion": "#888888",
-            "completion-menu.meta.completion.current": "#ffffff",
-            "scrollbar.background": "bg:#333333",
-            "scrollbar.button": "bg:#666666",
-            "bottom-toolbar": "bg:#1a1a1a #888888",
-            "bottom-toolbar.text": "#888888",
         }
     )
 
 
-def _top_border(model: str = "", width: int = 0) -> str:
-    """Build top border: ╭─── model ───╮"""
-    cols = width or shutil.get_terminal_size().columns
-    inner = cols - 2  # minus ╭ and ╮
-
-    if model:
-        label = f" {model} "
-        bar_right = _H * max(0, inner - len(label))
-        return f"{_BORDER}{_TL}{_BRAND}{label}{_BORDER}{bar_right}{_TR}{_RESET}"
-
-    return f"{_BORDER}{_TL}{_H * inner}{_TR}{_RESET}"
-
-
-def _bottom_border(hint: str = "", width: int = 0) -> str:
-    """Build bottom border: ╰─── hint ───╯"""
-    cols = width or shutil.get_terminal_size().columns
-    inner = cols - 2
-
-    if hint:
-        bar_left = _H * max(0, inner - len(hint) - 1)
-        return f"{_BORDER}{_BL}{bar_left}{_DIM}{hint} {_RESET}{_BORDER}{_BR}{_RESET}"
-
-    return f"{_BORDER}{_BL}{_H * inner}{_BR}{_RESET}"
-
-
 def create_prompt_session(state=None):
-    """Create a PromptSession with Claude Code style input."""
+    """Create input components. Returns a dict with app-creation callable.
+
+    Args:
+        state: Optional SessionState for bottom toolbar.
+
+    Returns:
+        A dict with 'get_input' callable, or None if prompt_toolkit unavailable.
+    """
     if not _HAS_PROMPT_TOOLKIT:
         return None
 
     history_path = Path("~/.shadow-code/prompt_history").expanduser()
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
+    return {
+        "history_path": str(history_path),
+        "state": state,
+        "history_entries": _load_history(str(history_path)),
+    }
+
+
+def _load_history(path: str) -> list[str]:
+    """Load history entries from file."""
+    try:
+        entries = []
+        p = Path(path)
+        if p.exists():
+            for line in p.read_text().splitlines():
+                if line.startswith("+"):
+                    entries.append(line[1:])
+        return entries[-100:]  # keep last 100
+    except OSError:
+        return []
+
+
+def _save_to_history(path: str, text: str):
+    """Append one entry to history file."""
+    try:
+        with open(path, "a") as f:
+            f.write(f"\n+{text}\n")
+    except OSError:
+        pass
+
+
+def get_input(session, model_name: str = "") -> str | None:
+    """Get input. Returns stripped string, None on EOF, empty on interrupt."""
+    if session is not None and _HAS_PROMPT_TOOLKIT:
+        return _get_input_app(session, model_name)
+    return _get_input_fallback(model_name)
+
+
+def _get_input_app(session_data: dict, model_name: str = "") -> str | None:
+    """Claude Code style: framed input box with Application layout."""
+    state = session_data.get("state")
+    history_path = session_data.get("history_path", "")
+
+    # Build toolbar text
+    def get_toolbar():
+        parts = []
+        if state:
+            parts.append(("class:toolbar.key", f" {state.model_name} "))
+            parts.append(("class:toolbar", " │ "))
+            parts.append(("class:toolbar", state.format_tokens()))
+            parts.append(("class:toolbar", " │ "))
+        parts.append(("class:toolbar", "Enter: send │ Alt+Enter: newline │ Ctrl+D: exit │ /help "))
+        return parts
+
+    # Text area for input
+    completer = WordCompleter(_SLASH_COMMANDS, sentence=True)
+    text_area = TextArea(
+        multiline=True,
+        completer=completer,
+        style="class:text-area",
+        prompt="",
+        focus_on_click=True,
+        wrap_lines=True,
+    )
+
+    # Key bindings
     bindings = KeyBindings()
 
+    @bindings.add("enter")
+    def _submit(event):
+        """Enter sends the message."""
+        text = text_area.text.strip()
+        if text:
+            event.app.exit(result=text)
+        # Empty enter does nothing
+
     @bindings.add("escape", "enter")
-    def _multiline(event):
-        event.current_buffer.insert_text("\n")
+    def _newline(event):
+        """Alt+Enter inserts a newline."""
+        text_area.buffer.insert_text("\n")
 
     @bindings.add("c-d")
     def _exit(event):
         event.app.exit(result=None)
 
     @bindings.add("c-x")
-    def _exit_cx(event):
+    def _exit2(event):
         event.app.exit(result=None)
+
+    @bindings.add("c-u")
+    def _clear(event):
+        text_area.text = ""
 
     @bindings.add("c-l")
     def _clear_screen(event):
         event.app.renderer.clear()
 
-    @bindings.add("c-u")
-    def _clear_line(event):
-        event.current_buffer.reset()
-
-    completer = WordCompleter(_SLASH_COMMANDS, sentence=True)
-
-    toolbar = None
-    if state is not None:
-
-        def toolbar():
-            from .status_bar import make_toolbar_html
-
-            return make_toolbar_html(state)
-
-    return PromptSession(
-        history=FileHistory(str(history_path)),
-        key_bindings=bindings,
-        completer=completer,
-        multiline=False,
-        enable_history_search=True,
-        style=_PT_STYLE,
-        bottom_toolbar=toolbar,
-        prompt_continuation="  ",
+    # Frame with model name in title
+    title = model_name or "shadow"
+    framed = Frame(
+        body=text_area,
+        title=title,
+        style="class:frame",
     )
 
+    # Layout: frame + toolbar
+    toolbar_window = Window(
+        content=FormattedTextControl(get_toolbar),
+        height=1,
+        style="class:toolbar",
+    )
 
-def get_input(session, model_name: str = "") -> str | None:
-    """Get input. Returns stripped string, None on EOF, empty on interrupt."""
-    if session is not None and _HAS_PROMPT_TOOLKIT:
-        return _get_input_prompt_toolkit(session, model_name)
-    return _get_input_fallback(model_name)
+    layout = Layout(
+        HSplit(
+            [
+                framed,
+                toolbar_window,
+            ]
+        ),
+        focused_element=text_area,
+    )
 
+    app = Application(
+        layout=layout,
+        key_bindings=bindings,
+        style=_PT_STYLE,
+        full_screen=False,
+        mouse_support=False,
+    )
 
-def _get_input_prompt_toolkit(session, model_name: str = "") -> str | None:
-    """Claude Code style: top border only, no bottom border."""
     try:
-        print(_top_border(model_name))
-        text = session.prompt("  ")
-        if text is None:
-            return None
-        return str(text.strip())
-    except EOFError:
+        result = app.run()
+        if result is not None:
+            _save_to_history(history_path, result)
+        return str(result) if result is not None else None
+    except (EOFError, KeyboardInterrupt):
         return None
-    except KeyboardInterrupt:
-        return ""
 
 
 def _get_input_fallback(model_name: str = "") -> str | None:
-    """Fallback with same visual style."""
+    """Fallback with simple ANSI bordered input."""
+    import shutil
+
+    _B = "\033[38;5;240m"  # border color
+    _O = "\033[38;5;173m"  # orange
+    _R = "\033[0m"
+    _TL, _TR, _BL, _BR = "\u256d", "\u256e", "\u2570", "\u256f"
+    _H, _V = "\u2500", "\u2502"
+
+    cols = shutil.get_terminal_size().columns
+    inner = cols - 2
+    label = f" {model_name or 'shadow'} "
+    bar = _H * max(0, inner - len(label))
+
+    # Top border
+    print(f"{_B}{_TL}{_O}{label}{_B}{bar}{_TR}{_R}")
+
     try:
-        print(_top_border(model_name))
-        text = input("  ")
-        return text.strip()
+        text = input(f"{_B}{_V}{_R} ")
     except EOFError:
+        print(f"{_B}{_BL}{_H * inner}{_BR}{_R}")
         return None
     except KeyboardInterrupt:
-        print()
+        print(f"\n{_B}{_BL}{_H * inner}{_BR}{_R}")
         return ""
+
+    # Bottom border
+    print(f"{_B}{_BL}{_H * inner}{_BR}{_R}")
+    return text.strip()

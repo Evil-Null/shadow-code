@@ -1,7 +1,7 @@
 """Tests for repl.py -- REPL input handling."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from shadow_code.repl import _SLASH_COMMANDS, get_input
 
@@ -47,44 +47,28 @@ class TestGetInputFallback(unittest.TestCase):
         self.assertEqual(result, "")
 
 
-class TestGetInputWithSession(unittest.TestCase):
-    """Test get_input with a mock PromptSession."""
+class TestCreatePromptSession(unittest.TestCase):
+    """Test create_prompt_session."""
 
-    def test_session_returns_text(self):
-        session = MagicMock()
-        session.prompt.return_value = "user input"
-        # Need _HAS_PROMPT_TOOLKIT to be True for session path
-        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", True):
-            result = get_input(session, "model")
-        self.assertEqual(result, "user input")
+    def test_returns_none_without_prompt_toolkit(self):
+        from shadow_code.repl import create_prompt_session
 
-    def test_session_strips_whitespace(self):
-        session = MagicMock()
-        session.prompt.return_value = "  padded  "
-        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", True):
-            result = get_input(session, "model")
-        self.assertEqual(result, "padded")
+        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", False):
+            result = create_prompt_session()
+            self.assertIsNone(result)
 
-    def test_session_none_result(self):
-        session = MagicMock()
-        session.prompt.return_value = None
-        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", True):
-            result = get_input(session, "model")
-        self.assertIsNone(result)
+    def test_returns_dict_with_prompt_toolkit(self):
+        from shadow_code.repl import create_prompt_session
 
-    def test_session_eof(self):
-        session = MagicMock()
-        session.prompt.side_effect = EOFError
-        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", True):
-            result = get_input(session, "model")
-        self.assertIsNone(result)
+        # Only test if prompt_toolkit is installed
+        try:
+            import prompt_toolkit  # noqa: F401
 
-    def test_session_keyboard_interrupt(self):
-        session = MagicMock()
-        session.prompt.side_effect = KeyboardInterrupt
-        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", True):
-            result = get_input(session, "model")
-        self.assertEqual(result, "")
+            result = create_prompt_session()
+            self.assertIsInstance(result, dict)
+            self.assertIn("history_path", result)
+        except ImportError:
+            pass  # Skip if not installed
 
 
 if __name__ == "__main__":

@@ -6,11 +6,10 @@
 
 import os
 
-from .theme import ERROR_SUGGESTIONS, EXT_TO_LANG, SYMBOLS, THEME
+from .theme import ERROR_SUGGESTIONS, SYMBOLS, THEME
 
 try:
     from rich.box import MINIMAL, ROUNDED, SIMPLE
-    from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
@@ -55,87 +54,78 @@ class UIRenderer:
     def _dots(self) -> "Text":
         return Text(f"{_s.dot}{_s.dot}{_s.dot}", style=f"{_t.text_dim}")
 
-    def render_streaming(self, text: str) -> "Panel":
-        body = Markdown(text) if text.strip() else self._dots()
-        return Panel(body, border_style=_t.text_muted, box=MINIMAL, padding=(0, 1))
+    def _prefix_text(self, text: str) -> Text:
+        """Add ⎿ prefix to each line (Claude Code style)."""
+        result = Text()
+        for i, line in enumerate(text.splitlines()):
+            if i > 0:
+                result.append("\n")
+            result.append("  \u238f  ", style="dim")
+            result.append(line)
+        return result
 
-    def render_streaming_with_tokens(self, text: str, estimated_tokens: int) -> "Panel":
-        """Render streaming with real-time token estimate."""
-        body = Markdown(text) if text.strip() else self._dots()
-        subtitle = f"[{_t.text_dim}]~{estimated_tokens:,} tokens[/{_t.text_dim}]"
-        return Panel(
-            body,
-            border_style=_t.text_muted,
-            box=MINIMAL,
-            subtitle=subtitle,
-            padding=(0, 1),
-        )
+    def render_streaming(self, text: str) -> "Text":
+        if not text.strip():
+            t = Text()
+            t.append("  \u238f  ", style="dim")
+            t.append(f"{_s.dot}{_s.dot}{_s.dot}", style="dim")
+            return t
+        return self._prefix_text(text)
+
+    def render_streaming_with_tokens(self, text: str, estimated_tokens: int) -> "Text":
+        """Render streaming with ⎿ prefix and token estimate."""
+        result = self.render_streaming(text)
+        if isinstance(result, Text):
+            result.append(f"\n{'':>50}~{estimated_tokens:,} tokens", style="dim")
+        return result
 
     # --- Response ---
 
-    def render_response(self, text: str, tokens: int = 0) -> "Panel":
-        subtitle_parts = []
+    def render_response(self, text: str, tokens: int = 0) -> "Text":
+        result = self._prefix_text(text)
         if tokens:
-            subtitle_parts.append(f"{tokens:,} tokens")
-        subtitle = (
-            f"[{_t.text_dim}]{' | '.join(subtitle_parts)}[/{_t.text_dim}]" if subtitle_parts else ""
-        )
-        return Panel(
-            Markdown(text),
-            border_style=_t.text_muted,
-            box=MINIMAL,
-            subtitle=subtitle,
-            padding=(0, 1),
-        )
+            result.append(f"\n{'':>50}{tokens:,} tokens", style="dim")
+        return result
 
-    # --- Tool Calls ---
+    # --- Tool Calls (Claude Code style: ⎿ prefix) ---
 
     def render_tool_call(self, tool: str, desc: str) -> "Text":
         text = Text()
-        text.append(f"  {_s.tool} ", style=f"{_t.text_dim}")
-        text.append(tool, style=f"bold {_t.tool}")
-        text.append(f" {desc}", style=f"{_t.text_dim}")
+        text.append("  \u238f  ", style="dim")  # ⎿
+        text.append(f"{_s.tool} {tool}", style=f"bold {_t.tool}")
+        text.append(f"  {desc}", style="dim")
         return text
 
     def render_tool_result(
         self, tool: str, output: str, success: bool, params: dict | None = None
-    ) -> "Panel":
+    ) -> "Text":
+        """Claude Code style: condensed ✓/✗ result with indented output."""
         color = _t.success if success else _t.error
         icon = _s.success if success else _s.error
 
-        # Per-tool display limits
-        _large_tools = ("read_file", "write_file", "edit_file", "bash", "multi_read")
-        max_chars = 3000 if tool in _large_tools else 1000
-        preview = output[:max_chars]
-        if len(output) > max_chars:
-            preview += f"\n{_s.dot}{_s.dot}{_s.dot} [{len(output) - max_chars} more chars]"
+        result = Text()
 
-        title = f"[{color}]{icon} {tool}[/{color}]"
+        # First line: icon + condensed output
+        first_line = output.split("\n")[0][:120] if output else ""
+        result.append(f"     {icon} ", style=f"bold {color}")
+        result.append(first_line, style="dim")
 
-        # Detect syntax language from file path
-        lang = "text"
-        if params and tool in ("read_file", "multi_read"):
-            path = params.get("file_path", "") or ""
-            if isinstance(params.get("paths"), list) and params["paths"]:
-                path = params["paths"][0]
-            ext = os.path.splitext(path)[1]
-            lang = EXT_TO_LANG.get(ext, "text")
-        elif tool == "bash":
-            lang = "bash"
+        # For read_file/bash/grep: show more lines indented
+        if tool in ("read_file", "bash", "grep", "multi_read") and output:
+            lines = output.splitlines()
+            show = min(len(lines), 20)
+            if show > 1:
+                for line in lines[1:show]:
+                    result.append(f"\n       {line}", style="dim")
+                if len(lines) > show:
+                    remaining = len(lines) - show
+                    dots = f"{_s.dot}{_s.dot}{_s.dot}"
+                    result.append(
+                        f"\n       {dots} [{remaining} more lines]",
+                        style="dim",
+                    )
 
-        # Syntax highlighting for code output
-        body: Text | object
-        if tool in ("read_file", "bash", "grep", "multi_read") and len(preview) > 10:
-            from rich.syntax import Syntax
-
-            try:
-                body = Syntax(preview, lang, theme="monokai", line_numbers=False)
-            except Exception:
-                body = Text(preview, style="dim")
-        else:
-            body = Text(preview, style="dim")
-
-        return Panel(body, border_style=color, box=SIMPLE, title=title, padding=(0, 1))
+        return result
 
     # --- Diff View ---
 
