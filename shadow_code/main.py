@@ -86,8 +86,17 @@ def main():
         print(f"shadow-code v0.1.0 | {MODEL_NAME}")
         print(f"CWD: {cwd}")
 
-    # Setup REPL
-    prompt_session = create_prompt_session() if _HAS_REPL else None
+    # Session state for toolbar
+    from .status_bar import SessionState
+
+    state = SessionState(
+        model_name=MODEL_NAME,
+        tokens_total=CONTEXT_WINDOW,
+        max_turns=MAX_TOOL_TURNS,
+    )
+
+    # Setup REPL (pass state for bottom toolbar)
+    prompt_session = create_prompt_session(state) if _HAS_REPL else None
 
     # Setup DB
     db = None
@@ -406,6 +415,8 @@ def main():
 
             conv.add_assistant(resp)
             conv.update_tokens(client.last_prompt_tokens)
+            state.tokens_used = conv.total_prompt_tokens
+            state.turn = turns
 
             # Save assistant response to DB
             if db:
@@ -468,7 +479,21 @@ def main():
                     r = tool_reg.dispatch(tc.tool, tc.params)
 
                     if _RICH:
-                        console.print(ui.render_tool_result(tc.tool, r.output, r.success))
+                        # Show diff view for edit_file
+                        if tc.tool == "edit_file" and r.success:
+                            console.print(
+                                ui.render_diff(
+                                    tc.params.get("old_string", ""),
+                                    tc.params.get("new_string", ""),
+                                    tc.params.get("file_path", ""),
+                                )
+                            )
+                        else:
+                            console.print(
+                                ui.render_tool_result(
+                                    tc.tool, r.output, r.success, params=tc.params
+                                )
+                            )
                     else:
                         print(f"  [{tc.tool}] {desc}")
                         # Show enough output for model to see full context

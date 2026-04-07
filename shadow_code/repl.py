@@ -1,23 +1,15 @@
 """prompt_toolkit REPL for shadow-code.
 
-Provides an enhanced input experience with:
+Professional input experience with:
+  - Styled prompt with brand color
   - Persistent file history (~/.shadow-code/prompt_history)
-  - Alt+Enter for multiline input (inserts newline)
-  - Ctrl+D to exit
-  - Tab-completion for slash commands
-  - History search with Ctrl+R (enable_history_search)
+  - Bottom toolbar showing model, tokens, shortcuts
+  - Alt+Enter for multiline input
+  - Ctrl+D/Ctrl+X to exit
+  - Tab-completion for slash commands with styled menu
+  - History search with Ctrl+R
 
 Falls back to built-in input() if prompt_toolkit is not installed.
-
-Usage:
-    from .repl import create_prompt_session, get_input
-
-    session = create_prompt_session()
-    while True:
-        text = get_input(session, "shadow-gemma:latest")
-        if text is None:
-            break  # EOF / Ctrl+D
-        # process text...
 """
 
 from pathlib import Path
@@ -27,6 +19,7 @@ try:
     from prompt_toolkit.completion import WordCompleter
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.styles import Style as PTStyle
 
     _HAS_PROMPT_TOOLKIT = True
 except ImportError:
@@ -43,23 +36,51 @@ _SLASH_COMMANDS = [
     "/load",
     "/list",
     "/info",
+    "/skills",
+    "/compact",
+    "/version",
+    "/history",
+    "/cd",
 ]
 
+# prompt_toolkit color scheme (Claude Code inspired)
+_PT_STYLE = None
+if _HAS_PROMPT_TOOLKIT:
+    _PT_STYLE = PTStyle.from_dict(
+        {
+            # Completion menu
+            "completion-menu.completion": "bg:#2d2d2d #e0e0e0",
+            "completion-menu.completion.current": "bg:#d77757 #ffffff bold",
+            "completion-menu.meta.completion": "#888888",
+            "completion-menu.meta.completion.current": "#ffffff",
+            # Scrollbar
+            "scrollbar.background": "bg:#333333",
+            "scrollbar.button": "bg:#666666",
+            # Bottom toolbar
+            "bottom-toolbar": "bg:#1a1a1a #888888",
+            "bottom-toolbar.text": "#888888",
+            # Prompt
+            "prompt": "bold #d77757",
+            "prompt.sep": "#888888",
+        }
+    )
 
-def create_prompt_session():
-    """Create a prompt_toolkit PromptSession with history and keybindings.
 
-    Returns a PromptSession if prompt_toolkit is available, or None for
-    the fallback path.
+def create_prompt_session(state=None):
+    """Create a prompt_toolkit PromptSession with styled prompt and toolbar.
+
+    Args:
+        state: Optional SessionState for bottom toolbar. If None, no toolbar.
+
+    Returns:
+        A PromptSession if prompt_toolkit is available, or None.
     """
     if not _HAS_PROMPT_TOOLKIT:
         return None
 
-    # Ensure history directory exists
     history_path = Path("~/.shadow-code/prompt_history").expanduser()
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Key bindings
     bindings = KeyBindings()
 
     @bindings.add("escape", "enter")
@@ -87,11 +108,16 @@ def create_prompt_session():
         """Ctrl+U clears the current input line."""
         event.current_buffer.reset()
 
-    # Slash command completer
-    completer = WordCompleter(
-        _SLASH_COMMANDS,
-        sentence=True,  # complete after spaces too
-    )
+    completer = WordCompleter(_SLASH_COMMANDS, sentence=True)
+
+    # Bottom toolbar
+    toolbar = None
+    if state is not None:
+
+        def toolbar():
+            from .status_bar import make_toolbar_html
+
+            return make_toolbar_html(state)
 
     return PromptSession(
         history=FileHistory(str(history_path)),
@@ -99,17 +125,14 @@ def create_prompt_session():
         completer=completer,
         multiline=False,
         enable_history_search=True,
+        style=_PT_STYLE,
+        bottom_toolbar=toolbar,
+        prompt_continuation=lambda width, line_number, is_soft_wrap: "   ... ",
     )
 
 
 def get_input(session, model_name: str = "") -> str | None:
     """Get user input using the prompt session.
-
-    Args:
-        session: A PromptSession from create_prompt_session(), or None for
-                 fallback mode.
-        model_name: The model name to display in the prompt (unused in
-                    basic mode, available for future prompt customization).
 
     Returns:
         The user's input string (stripped), or None on EOF/Ctrl+D.
@@ -121,16 +144,24 @@ def get_input(session, model_name: str = "") -> str | None:
 
 
 def _get_input_prompt_toolkit(session) -> str | None:
-    """Get input using prompt_toolkit."""
+    """Get input using prompt_toolkit with styled prompt."""
     try:
-        text = session.prompt("shadow> ")
+        try:
+            from prompt_toolkit.formatted_text import HTML as _HTML
+
+            prompt = _HTML(
+                '<b><style fg="#d77757">shadow</style></b><style fg="#888888">></style> '
+            )
+        except ImportError:
+            prompt = "shadow> "
+        text = session.prompt(prompt)
         if text is None:
-            return None  # Ctrl+D via keybinding
+            return None
         return str(text.strip())
     except EOFError:
         return None
     except KeyboardInterrupt:
-        return ""  # empty string signals "skip this input"
+        return ""
 
 
 def _get_input_fallback() -> str | None:
@@ -141,5 +172,5 @@ def _get_input_fallback() -> str | None:
     except EOFError:
         return None
     except KeyboardInterrupt:
-        print()  # newline after ^C
-        return ""  # empty string signals "skip this input"
+        print()
+        return ""

@@ -2,7 +2,7 @@
 #
 # Handles streaming display with Rich Live panels.
 # Tool call blocks are hidden by StreamDisplay, only visible text shown.
-# transient=True so intermediate panels clear, tool results stay visible.
+# Includes real-time token estimation and shimmer thinking animation.
 
 import io
 import sys
@@ -45,14 +45,12 @@ class StreamController:
             return self._stream_plain(messages, system)
 
     def _stream_rich(self, messages: list[dict], system: str) -> tuple[str, int]:
-        """Stream with Rich Live panel rendering."""
+        """Stream with Rich Live panel + real-time token estimation."""
         self.display.reset()
         accumulated_visible = ""
+        char_count = 0
 
         try:
-            # transient=True: panel clears after streaming ends
-            # This way tool results (printed via console.print) stay visible
-            # and don't get overwritten by the next Live panel
             with Live(
                 self.ui.render_thinking(),
                 console=self.console,
@@ -61,11 +59,16 @@ class StreamController:
             ) as live:
                 for chunk in self.client.chat_stream(messages, system):
                     visible_text = self._feed_and_capture(chunk)
+                    char_count += len(chunk)
                     if visible_text:
                         accumulated_visible += visible_text
-                        live.update(self.ui.render_streaming(accumulated_visible))
+                        estimated_tokens = char_count // 4
+                        live.update(
+                            self.ui.render_streaming_with_tokens(
+                                accumulated_visible, estimated_tokens
+                            )
+                        )
 
-                # Flush remaining
                 remaining = self._flush_and_capture()
                 if remaining:
                     accumulated_visible += remaining
@@ -76,7 +79,7 @@ class StreamController:
                 accumulated_visible += remaining
             raise StreamCancelled() from None
 
-        # Print final visible text OUTSIDE Live (so it stays on screen permanently)
+        # Print final response OUTSIDE Live (stays on screen permanently)
         if accumulated_visible.strip():
             tokens = self.client.last_eval_tokens
             self.console.print(self.ui.render_response(accumulated_visible, tokens))
