@@ -158,25 +158,16 @@ def get_input(session, model_name: str = "") -> str | None:
 
 
 def _get_input_prompt_toolkit(session, model_name: str = "") -> str | None:
-    """Claude Code style: top border → input → bottom border."""
+    """Claude Code style: top border only, no bottom border."""
     try:
-        # ╭─── model ───╮
         print(_top_border(model_name))
-
-        # Input (indented, no side borders)
         text = session.prompt("  ")
-
-        # ╰─── hints ───╯
-        print(_bottom_border("Ctrl+D exit │ /help"))
-
         if text is None:
             return None
         return str(text.strip())
     except EOFError:
-        print()  # close the box visually
         return None
     except KeyboardInterrupt:
-        print()
         return ""
 
 
@@ -185,10 +176,8 @@ def _get_input_fallback(model_name: str = "") -> str | None:
     try:
         print(_top_border(model_name))
         text = input("  ")
-        print(_bottom_border("Ctrl+D exit │ /help"))
         return text.strip()
     except EOFError:
-        print()
         return None
     except KeyboardInterrupt:
         print()
