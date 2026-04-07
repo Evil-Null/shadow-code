@@ -10,89 +10,17 @@ import re
 from .config import COMPACTION_MODEL
 from .ollama_client import OllamaClient
 
-# Aggressive no-tools preamble (from Claude Code -- prevents wasted turns)
-_NO_TOOLS = """CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
-Do NOT use bash, read_file, edit_file, write_file, glob, grep, or list_dir.
-You already have all the context you need in the conversation above.
-Your entire response must be plain text: an <analysis> block followed by a <summary> block.
-"""
+COMPACT_PROMPT = """RESPOND WITH TEXT ONLY. Do NOT call any tools.
 
-COMPACT_PROMPT = (
-    _NO_TOOLS
-    + """Your task is to create a detailed summary of the conversation so far,
-paying close attention to the user's explicit requests and your previous actions.
-This summary should be thorough in capturing technical details, code patterns,
-and architectural decisions essential for continuing work without losing context.
+Summarize this conversation. Include:
 
-Before providing your summary, wrap your analysis in <analysis> tags to organize
-your thoughts. In your analysis:
-1. Chronologically analyze each message. For each, identify:
-   - The user's explicit requests and intents
-   - Your approach to addressing them
-   - Key decisions, technical concepts, code patterns
-   - Specific file names, code snippets, function signatures, file edits
-   - Errors encountered and how they were fixed
-   - User feedback, especially corrections ("do it differently", "not that way")
-2. Double-check for technical accuracy and completeness.
+1. WHAT THE USER WANTS: All requests, in order
+2. WHAT WAS DONE: Files read/modified/created, with exact paths and key changes
+3. WHAT FAILED: Errors encountered and how they were fixed
+4. WHAT'S NEXT: The current task and next step
 
-Your summary should include these sections:
-
-1. Primary Request and Intent: All of the user's explicit requests in detail
-2. Key Technical Concepts: Technologies, frameworks, patterns discussed
-3. Files and Code: Files examined, modified, or created. Include:
-   - Why each file is important
-   - Summary of changes made
-   - Key code snippets where relevant
-4. Errors and Fixes: All errors encountered, how fixed, user feedback on fixes
-5. Problem Solving: Problems solved, ongoing troubleshooting
-6. All User Messages: List ALL non-tool-result user messages (critical for intent tracking)
-7. Pending Tasks: Incomplete work explicitly requested
-8. Current Work: Precisely what was being worked on immediately before this summary,
-   with file names and code snippets
-9. Next Step: The next action directly in line with the user's most recent request.
-   Include direct quotes from the conversation showing exactly what task was in progress.
-
-<analysis>
-[Your chronological analysis of the conversation]
-</analysis>
-
-<summary>
-1. Primary Request and Intent:
-   [Detailed description]
-
-2. Key Technical Concepts:
-   - [Concept 1]
-   - [Concept 2]
-
-3. Files and Code:
-   - [File path]
-     - [Why important]
-     - [Changes made]
-     - [Code snippet if relevant]
-
-4. Errors and Fixes:
-   - [Error]: [How fixed]
-
-5. Problem Solving:
-   [Description]
-
-6. All User Messages:
-   - [Message 1]
-   - [Message 2]
-
-7. Pending Tasks:
-   - [Task 1]
-
-8. Current Work:
-   [Precise description with file names]
-
-9. Next Step:
-   [Next action with quotes from conversation]
-</summary>
-
-REMINDER: Do NOT call any tools. Respond with plain text only.
-"""
-)
+Keep file paths, function names, and variable names exact. Be detailed on code changes.
+Do NOT use any tools. Plain text only."""
 
 
 def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> str:
@@ -122,21 +50,10 @@ def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> s
 
 
 def format_summary(raw: str) -> str:
-    """Strip <analysis>, extract <summary> content.
+    """Clean up the compaction summary.
 
-    The model wraps reasoning in <analysis> (discarded) and the
-    actual summary in <summary> (kept). If no tags, returns cleaned text.
+    Strips any XML-like tags the model might emit and returns plain text.
     """
-    # Remove analysis block
-    cleaned = re.sub(r"<analysis>.*?</analysis>", "", raw, flags=re.DOTALL)
-
-    # Extract summary content
-    match = re.search(r"<summary>(.*?)</summary>", cleaned, re.DOTALL)
-    if match:
-        summary = match.group(1).strip()
-        # Replace XML-style tags with readable headers
-        summary = summary.replace("<summary>", "").replace("</summary>", "")
-        return summary
-
-    # No tags -- return cleaned text
+    # Remove any XML-style tags the model might add
+    cleaned = re.sub(r"<[a-z_]+>|</[a-z_]+>", "", raw)
     return cleaned.strip()

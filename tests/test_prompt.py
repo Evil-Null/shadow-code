@@ -46,14 +46,11 @@ class TestSystemPrompt(unittest.TestCase):
     def test_has_doing_tasks_section(self):
         self.assertIn("# Doing Tasks", SYSTEM_PROMPT)
 
-    def test_has_git_section(self):
-        self.assertIn("Committing Changes with Git", SYSTEM_PROMPT)
+    def test_has_safety_section(self):
+        self.assertIn("# Safety", SYSTEM_PROMPT)
 
-    def test_has_tone_section(self):
-        self.assertIn("Tone and Style", SYSTEM_PROMPT)
-
-    def test_has_output_efficiency(self):
-        self.assertIn("Output Efficiency", SYSTEM_PROMPT)
+    def test_has_output_quality(self):
+        self.assertIn("Output Quality", SYSTEM_PROMPT)
 
     # --- Language rule ---
 
@@ -65,12 +62,9 @@ class TestSystemPrompt(unittest.TestCase):
 
     # --- Safety rules ---
 
-    def test_has_security_rule(self):
-        self.assertIn("OWASP", SYSTEM_PROMPT)
-
     def test_has_git_safety(self):
         self.assertIn("--no-verify", SYSTEM_PROMPT)
-        self.assertIn("force push", SYSTEM_PROMPT.lower())
+        self.assertIn("destructive", SYSTEM_PROMPT.lower())
 
     def test_no_dynamic_content(self):
         """System prompt must be 100% static -- no f-string markers."""
@@ -91,12 +85,9 @@ class TestSystemPrompt(unittest.TestCase):
 
     # --- Executing actions section ---
 
-    def test_has_care_section(self):
-        self.assertIn("Executing Actions with Care", SYSTEM_PROMPT)
-
-    def test_has_destructive_warnings(self):
-        self.assertIn("rm -rf", SYSTEM_PROMPT)
-        self.assertIn("reset --hard", SYSTEM_PROMPT)
+    def test_has_complete_code_instruction(self):
+        self.assertIn("COMPLETE", SYSTEM_PROMPT)
+        self.assertIn("PRODUCTION-READY", SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

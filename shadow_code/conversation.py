@@ -11,9 +11,9 @@ so they remain as XML regardless of the ```tool_call format used by the model.
 from .config import CONTEXT_WINDOW
 
 # Thresholds (Claude Code style)
-RESULT_CLEARING_RATIO = 0.55  # clear old tool results at 55%
-COMPACTION_RATIO = 0.65  # auto-compact at 65% (low enough to leave room for summary)
-EMERGENCY_TRUNCATE_RATIO = 0.85  # hard truncate at 85% (fallback if compaction fails)
+RESULT_CLEARING_RATIO = 0.65  # clear old tool results at 65% (was 55% -- too aggressive)
+COMPACTION_RATIO = 0.75  # auto-compact at 75% (was 65% -- Gemma needs more context)
+EMERGENCY_TRUNCATE_RATIO = 0.90  # hard truncate at 90% (was 85%)
 KEEP_RECENT_RESULTS = 5
 KEEP_RECENT_MESSAGES = 20
 CLEARED_STUB = "[Tool result cleared to save context. Output was already processed.]"

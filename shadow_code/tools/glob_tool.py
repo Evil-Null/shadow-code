@@ -68,14 +68,17 @@ class GlobTool(BaseTool):
         # Sort by modification time, newest first
         matches.sort(key=lambda x: x[1], reverse=True)
 
-        # Cap results
-        matches = matches[:_MAX_RESULTS]
-
         if not matches:
             return ToolResult(True, "No files matched.")
 
+        total_found = len(matches)
+        matches = matches[:_MAX_RESULTS]
+
         lines = [m[0] for m in matches]
-        return ToolResult(True, "\n".join(lines))
+        output = "\n".join(lines)
+        if total_found > _MAX_RESULTS:
+            output += f"\n\n({total_found} total matches, showing first {_MAX_RESULTS})"
+        return ToolResult(True, output)
 
 
 def _match(relpath: str, pattern: str, has_globstar: bool) -> bool:
