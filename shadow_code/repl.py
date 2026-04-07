@@ -77,34 +77,21 @@ _BRAND_COLOR = "\033[38;5;173m"  # #d77757 approximate
 _RESET = "\033[0m"
 
 
-def _print_input_top(width: int = 0):
-    """Print the top border of the input box."""
+def _print_input_frame(width: int = 0):
+    """Print the input box frame (top border with label and hints)."""
     import shutil
 
     cols = width or shutil.get_terminal_size().columns
     inner = cols - 2
     label = " shadow "
-    bar_left = _BOX_H * 2
-    bar_right = _BOX_H * (inner - len(bar_left) - len(label))
+    hint = " Alt+Enter: newline "
+    bar_mid = _BOX_H * max(0, inner - 2 - len(label) - len(hint))
     print(
-        f"{_BOX_COLOR}{_BOX_TOP_L}{bar_left}"
+        f"{_BOX_COLOR}{_BOX_TOP_L}{_BOX_H * 2}"
         f"{_BRAND_COLOR}{label}"
-        f"{_BOX_COLOR}{bar_right}{_BOX_TOP_R}{_RESET}"
-    )
-
-
-def _print_input_bottom(width: int = 0):
-    """Print the bottom border of the input box."""
-    import shutil
-
-    cols = width or shutil.get_terminal_size().columns
-    inner = cols - 2
-    hint = " Alt+Enter: newline │ /help "
-    bar_right = _BOX_H * max(0, inner - len(hint))
-    print(
-        f"{_BOX_COLOR}{_BOX_BOT_L}{bar_right}"
+        f"{_BOX_COLOR}{bar_mid}"
         f"\033[2m{hint}\033[22m"
-        f"{_BOX_COLOR}{_BOX_BOT_R}{_RESET}"
+        f"{_BOX_COLOR}{_BOX_H * 2}{_BOX_TOP_R}{_RESET}"
     )
 
 
@@ -191,17 +178,9 @@ def get_input(session, model_name: str = "") -> str | None:
 def _get_input_prompt_toolkit(session) -> str | None:
     """Get input with bordered input box."""
     try:
-        # Print top border
-        _print_input_top()
-
-        # Prompt with left border
+        _print_input_frame()
         prompt_str = f"  {_BOX_COLOR}{_BOX_V}{_RESET} "
-
         text = session.prompt(prompt_str)
-
-        # Print bottom border
-        _print_input_bottom()
-
         if text is None:
             return None
         return str(text.strip())
@@ -214,9 +193,8 @@ def _get_input_prompt_toolkit(session) -> str | None:
 def _get_input_fallback() -> str | None:
     """Fallback input with simple border."""
     try:
-        _print_input_top()
+        _print_input_frame()
         text = input(f"  {_BOX_COLOR}{_BOX_V}{_RESET} ")
-        _print_input_bottom()
         return text.strip()
     except EOFError:
         return None
