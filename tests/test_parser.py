@@ -167,7 +167,7 @@ class TestConversation(unittest.TestCase):
         msgs = conv.get_messages()
         self.assertEqual(len(msgs), 1)
         self.assertEqual(msgs[0]["role"], "user")
-        self.assertIn("[Tool execution results", msgs[0]["content"])
+        self.assertIn("[Tool results below", msgs[0]["content"])
         self.assertIn("<tool_result", msgs[0]["content"])
 
     def test_clear(self):

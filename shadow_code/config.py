@@ -28,7 +28,9 @@ MODEL_OPTIONS = {
     "num_predict": MAX_OUTPUT_TOKENS,
     "top_k": 40,
     "top_p": 0.9,
+    "min_p": 0.05,  # Cut tokens with <5% probability -- improves code quality
     "repeat_penalty": 1.1,
+    "penalize_newline": False,  # CRITICAL for code -- don't penalize line breaks
 }
 
 # --- Model Routing ---

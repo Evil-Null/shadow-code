@@ -329,7 +329,10 @@ def main():
             env_prefix = (
                 f"[Environment: CWD={ctx.cwd}, "
                 f"Platform={platform.system()} {platform.release()}, "
-                f"Shell={shell}, Date={datetime.now().strftime('%Y-%m-%d')}]\n\n"
+                f"Shell={shell}, Date={datetime.now().strftime('%Y-%m-%d')}]\n"
+                "[Remember: write COMPLETE, PRODUCTION-READY code. "
+                "Never use placeholders, never abbreviate, include all imports "
+                "and error handling.]\n\n"
             )
             conv.add_user(env_prefix + user_input)
             first_message = False

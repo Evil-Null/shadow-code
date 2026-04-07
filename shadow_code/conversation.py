@@ -32,7 +32,9 @@ class Conversation:
 
     def add_tool_results(self, results_text: str):
         prefixed = (
-            "[Tool execution results. Continue working on the user's request.]\n\n" + results_text
+            "[Tool results below. Use these results to continue. "
+            "Write COMPLETE code -- never abbreviate with '...' or placeholders.]\n\n"
+            + results_text
         )
         self.messages.append({"role": "user", "content": prefixed})
 

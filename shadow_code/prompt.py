@@ -44,33 +44,16 @@ After each tool call, you will receive:
 
 Use the result to answer the user or continue working.
 
-## Example 1: Listing files
+## Example: Multi-step task
 
-User: "what files are here?"
-Assistant: Let me check.
-
-```tool_call
-{"tool": "bash", "params": {"command": "ls -la"}}
-```
-
-(receives tool_result with file listing, then responds with summary)
-
-## Example 2: Read then edit
-
-User: "fix the typo in config.py"
-Assistant: Let me read the file first.
+User: "create a utility function for retrying failed HTTP requests"
+Assistant: I'll create a complete retry utility with exponential backoff, configurable retries, and proper error handling.
 
 ```tool_call
-{"tool": "read_file", "params": {"file_path": "/home/user/project/config.py"}}
+{"tool": "write_file", "params": {"file_path": "/home/user/project/utils/retry.py", "content": "import time\nimport logging\nfrom typing import Callable, TypeVar, Any\nfrom functools import wraps\n\nlogger = logging.getLogger(__name__)\n\nT = TypeVar('T')\n\n\ndef retry(\n    max_attempts: int = 3,\n    backoff_factor: float = 1.0,\n    exceptions: tuple = (Exception,),\n) -> Callable:\n    \"\"\"Decorator that retries a function with exponential backoff.\n\n    Args:\n        max_attempts: Maximum number of retry attempts.\n        backoff_factor: Multiplier for delay between retries.\n        exceptions: Tuple of exception types to catch and retry.\n\n    Returns:\n        Decorated function with retry logic.\n    \"\"\"\n    def decorator(func: Callable[..., T]) -> Callable[..., T]:\n        @wraps(func)\n        def wrapper(*args: Any, **kwargs: Any) -> T:\n            last_exception = None\n            for attempt in range(1, max_attempts + 1):\n                try:\n                    return func(*args, **kwargs)\n                except exceptions as e:\n                    last_exception = e\n                    if attempt < max_attempts:\n                        delay = backoff_factor * (2 ** (attempt - 1))\n                        logger.warning(\n                            f'{func.__name__} failed (attempt {attempt}/{max_attempts}): {e}. '\n                            f'Retrying in {delay:.1f}s...'\n                        )\n                        time.sleep(delay)\n                    else:\n                        logger.error(f'{func.__name__} failed after {max_attempts} attempts: {e}')\n            raise last_exception\n        return wrapper\n    return decorator\n"}}
 ```
 
-(receives file contents, sees typo on line 5)
-
-I see the typo on line 5. Fixing it.
-
-```tool_call
-{"tool": "edit_file", "params": {"file_path": "/home/user/project/config.py", "old_string": "DEFUALT_TIMEOUT", "new_string": "DEFAULT_TIMEOUT"}}
-```
+(receives tool_result confirming file created, then responds with explanation of the code)
 
 # Available Tools
 
