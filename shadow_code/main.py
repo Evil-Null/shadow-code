@@ -452,10 +452,10 @@ def main():
                         console.print(ui.render_tool_result(tc.tool, r.output, r.success))
                     else:
                         print(f"  [{tc.tool}] {desc}")
-                        # Show enough output to see what happened
-                        max_lines = 30 if tc.tool in ("read_file", "bash", "grep") else 15
+                        # Show enough output for model to see full context
+                        max_lines = 80 if tc.tool in ("read_file", "bash", "grep") else 40
                         max_chars = (
-                            2000 if tc.tool in ("read_file", "write_file", "edit_file") else 800
+                            8000 if tc.tool in ("read_file", "write_file", "edit_file") else 3000
                         )
                         preview = r.output[:max_chars]
                         if len(r.output) > max_chars:

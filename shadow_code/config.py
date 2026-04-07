@@ -4,7 +4,7 @@ OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = os.environ.get("SHADOW_MODEL", "shadow-gemma:latest")
 CONTEXT_WINDOW = 131_072
 MAX_TOOL_TURNS = 20
-MAX_CONSECUTIVE_ERRORS = 3
+MAX_CONSECUTIVE_ERRORS = 5
 TOOL_OUTPUT_MAX_CHARS = 30_000
 BASH_DEFAULT_TIMEOUT = 120
 BASH_MAX_TIMEOUT = 600
@@ -18,7 +18,18 @@ BLOCKED_PATHS = {
     "/dev/stdout",
     "/dev/stderr",
 }
-MODEL_OPTIONS = {"temperature": 0.3, "num_ctx": CONTEXT_WINDOW}
+# num_predict: max output tokens per response. Default ~2048 is too low for code generation.
+# Set high so the model can write complete files without truncation.
+MAX_OUTPUT_TOKENS = int(os.environ.get("SHADOW_MAX_TOKENS", "8192"))
+
+MODEL_OPTIONS = {
+    "temperature": 0.3,
+    "num_ctx": CONTEXT_WINDOW,
+    "num_predict": MAX_OUTPUT_TOKENS,
+    "top_k": 40,
+    "top_p": 0.9,
+    "repeat_penalty": 1.1,
+}
 
 # --- Model Routing ---
 # Override via SHADOW_MODEL env var or use these as guidance for model selection.
