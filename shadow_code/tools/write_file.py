@@ -22,13 +22,27 @@ class WriteFileTool(BaseTool):
     def execute(self, params: dict) -> ToolResult:
         path = os.path.abspath(params["file_path"])
         content = params["content"]
+        append = params.get("append", False)
+
+        # Append mode: add to existing file (for chunked writes of large files)
+        if append:
+            if not os.path.exists(path):
+                return ToolResult(False, f"Cannot append -- file does not exist: {path}")
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(content)
+                new_size = os.path.getsize(path)
+                return ToolResult(
+                    True, f"Appended {len(content)} chars to {path} (now {new_size} bytes)"
+                )
+            except (PermissionError, OSError) as e:
+                return ToolResult(False, f"Cannot append to file: {e}")
 
         existed = os.path.exists(path)
         old_size = 0
         if existed:
             if os.path.isdir(path):
                 return ToolResult(False, f"Path is a directory: {path}")
-            # Enforce read-before-write for existing files (matches edit_file behavior)
             if not self.ctx.was_file_read(path):
                 return ToolResult(
                     False,
@@ -47,7 +61,6 @@ class WriteFileTool(BaseTool):
         except OSError as e:
             return ToolResult(False, f"Cannot create directory {parent}: {e}")
 
-        # Write file
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)

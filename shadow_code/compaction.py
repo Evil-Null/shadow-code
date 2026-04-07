@@ -12,14 +12,30 @@ from .ollama_client import OllamaClient
 
 COMPACT_PROMPT = """RESPOND WITH TEXT ONLY. Do NOT call any tools.
 
-Summarize this conversation. Include:
+Summarize this conversation for continuity. Format:
 
-1. WHAT THE USER WANTS: All requests, in order
-2. WHAT WAS DONE: Files read/modified/created, with exact paths and key changes
-3. WHAT FAILED: Errors encountered and how they were fixed
-4. WHAT'S NEXT: The current task and next step
+## User Goal
+What the user is trying to accomplish (1-2 sentences).
 
-Keep file paths, function names, and variable names exact. Be detailed on code changes.
+## Files Modified
+For each file created or edited:
+- Path: exact path
+- What changed: key modifications
+- Current state: working / broken / partial
+
+## Files Read (Not Modified)
+List file paths that were read for context.
+
+## Errors Encountered
+What failed and how it was fixed (or if still broken).
+
+## Current Task
+What was being worked on. What the immediate next step is.
+
+## Key Code Details
+Function signatures, variable names, architectural decisions needed to continue.
+
+Keep ALL file paths, function names, and variable names EXACT.
 Do NOT use any tools. Plain text only."""
 
 

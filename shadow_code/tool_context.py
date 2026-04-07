@@ -11,6 +11,7 @@ class ToolContext:
     def __init__(self, initial_cwd: str):
         self.cwd = initial_cwd
         self.read_files: set[str] = set()
+        self.backups: dict[str, bytes] = {}  # file_path -> content for file_backup/restore
 
     def mark_file_read(self, path: str):
         self.read_files.add(os.path.abspath(path))

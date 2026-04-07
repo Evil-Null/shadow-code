@@ -55,7 +55,7 @@ class TestSystemPrompt(unittest.TestCase):
     # --- Language rule ---
 
     def test_has_language_rule(self):
-        self.assertIn("SAME language", SYSTEM_PROMPT)
+        self.assertIn("same language", SYSTEM_PROMPT.lower())
 
     def test_has_georgian_rule(self):
         self.assertIn("Georgian", SYSTEM_PROMPT)

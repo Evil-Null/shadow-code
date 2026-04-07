@@ -3,6 +3,21 @@ from .base import BaseTool, ToolResult
 
 _REGISTRY: dict[str, BaseTool] = {}
 
+# Per-tool output limits (override global TOOL_OUTPUT_MAX_CHARS)
+_TOOL_OUTPUT_LIMITS: dict[str, int] = {
+    "bash": 15_000,
+    "read_file": 30_000,
+    "multi_read": 30_000,
+    "grep": 10_000,
+    "list_dir": 5_000,
+    "glob": 5_000,
+    "edit_file": 5_000,
+    "write_file": 2_000,
+    "file_backup": 1_000,
+    "file_restore": 1_000,
+    "project_summary": 10_000,
+}
+
 
 def register(tool: BaseTool):
     _REGISTRY[tool.name] = tool
@@ -18,17 +33,18 @@ def dispatch(name: str, params: dict) -> ToolResult:
         return ToolResult(False, f"Invalid parameters: {err}")
     try:
         result = tool.execute(params)
-        result.output = _truncate(result.output)
+        limit = _TOOL_OUTPUT_LIMITS.get(name, TOOL_OUTPUT_MAX_CHARS)
+        result.output = _truncate(result.output, limit)
         return result
     except Exception as e:
         return ToolResult(False, f"Tool error: {type(e).__name__}: {e}")
 
 
-def _truncate(text: str) -> str:
-    if len(text) <= TOOL_OUTPUT_MAX_CHARS:
+def _truncate(text: str, max_chars: int = TOOL_OUTPUT_MAX_CHARS) -> str:
+    if len(text) <= max_chars:
         return text
-    half = TOOL_OUTPUT_MAX_CHARS // 2
-    removed = len(text) - TOOL_OUTPUT_MAX_CHARS
+    half = max_chars // 2
+    removed = len(text) - max_chars
     return text[:half] + f"\n\n[...{removed} chars truncated...]\n\n" + text[-half:]
 
 

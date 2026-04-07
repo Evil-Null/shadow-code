@@ -85,4 +85,22 @@ class EditFileTool(BaseTool):
         except OSError as e:
             return ToolResult(False, f"Cannot write file: {e}")
 
-        return ToolResult(True, f"Replaced {replaced} occurrence(s) in {path}")
+        # Show post-edit context so model can verify the edit looks correct
+        msg = f"Replaced {replaced} occurrence(s) in {path}"
+        edit_pos = new_content.find(new_string)
+        if edit_pos >= 0:
+            # Show ~5 lines around the edit
+            before = new_content[:edit_pos]
+            start = before.rfind("\n", max(0, len(before) - 300)) + 1
+            after_end = new_content.find(
+                "\n", min(len(new_content), edit_pos + len(new_string) + 300)
+            )
+            if after_end == -1:
+                after_end = len(new_content)
+            context = new_content[start:after_end]
+            lines = context.split("\n")
+            # Add line numbers
+            start_line = new_content[:start].count("\n") + 1
+            numbered = [f"{start_line + i:6d}\t{ln}" for i, ln in enumerate(lines)]
+            msg += "\n\nContext after edit:\n" + "\n".join(numbered[:15])
+        return ToolResult(True, msg)

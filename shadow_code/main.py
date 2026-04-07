@@ -327,13 +327,29 @@ def main():
         if first_message:
             shell = os.environ.get("SHELL", "/bin/bash").rsplit("/", 1)[-1]
             env_prefix = (
-                f"[Environment: CWD={ctx.cwd}, "
-                f"Platform={platform.system()} {platform.release()}, "
-                f"Shell={shell}, Date={datetime.now().strftime('%Y-%m-%d')}]\n"
-                "[Remember: write COMPLETE, PRODUCTION-READY code. "
-                "Never use placeholders, never abbreviate, include all imports "
-                "and error handling.]\n\n"
+                f"[Environment]\n"
+                f"CWD: {ctx.cwd}\n"
+                f"Platform: {platform.system()} {platform.release()}\n"
+                f"Shell: {shell}\n"
+                f"Date: {datetime.now().strftime('%Y-%m-%d')}\n"
+                f"[/Environment]\n\n"
             )
+            # Auto-inject CLAUDE.md / SHADOW.md if present
+            for ctx_file in ["CLAUDE.md", "SHADOW.md", ".shadow-code/context.md"]:
+                ctx_path = os.path.join(ctx.cwd, ctx_file)
+                if os.path.isfile(ctx_path):
+                    try:
+                        with open(ctx_path, encoding="utf-8") as f:
+                            ctx_content = f.read()
+                        if len(ctx_content) < 8000:
+                            env_prefix += (
+                                f"[Project context from {ctx_file}]\n"
+                                f"{ctx_content}\n"
+                                f"[/Project context]\n\n"
+                            )
+                    except OSError:
+                        pass
+                    break
             conv.add_user(env_prefix + user_input)
             first_message = False
         else:
@@ -470,7 +486,20 @@ def main():
                 results.append(tool_reg.format_result(tc.tool, r))
                 errors = errors + 1 if not r.success else 0
 
-            conv.add_tool_results("\n\n".join(results))
+            # Progress-aware tool result injection
+            result_parts = []
+            result_parts.append(f"[Turn {turns + 1}/{MAX_TOOL_TURNS}]")
+            if errors >= 3:
+                result_parts.append(
+                    "[WARNING: Multiple errors. Before next action:\n"
+                    "1. What are you trying to do?\n"
+                    "2. Why did the last attempts fail?\n"
+                    "3. What different approach should you try?]"
+                )
+            result_parts.append("\n\n".join(results))
+            if turns >= MAX_TOOL_TURNS - 2:
+                result_parts.append("[Approaching turn limit. Finish current task and summarize.]")
+            conv.add_tool_results("\n\n".join(result_parts))
             turns += 1
 
             if errors >= MAX_CONSECUTIVE_ERRORS:
@@ -525,6 +554,10 @@ def _register_optional_tools(ctx):
         ("shadow_code.tools.glob_tool", "GlobTool"),
         ("shadow_code.tools.grep_tool", "GrepTool"),
         ("shadow_code.tools.list_dir", "ListDirTool"),
+        ("shadow_code.tools.multi_read", "MultiReadTool"),
+        ("shadow_code.tools.project_summary", "ProjectSummaryTool"),
+        ("shadow_code.tools.file_backup", "FileBackupTool"),
+        ("shadow_code.tools.file_backup", "FileRestoreTool"),
     ]
     for mod_path, cls_name in optional:
         try:
