@@ -1,7 +1,8 @@
 """prompt_toolkit REPL for shadow-code.
 
 Professional input experience with:
-  - Bordered input box (Claude Code style) that grows with text
+  - Visual separator between output and input
+  - Styled prompt symbol (▸) in brand color
   - Persistent file history (~/.shadow-code/prompt_history)
   - Bottom toolbar showing model, tokens, shortcuts
   - Alt+Enter for multiline input
@@ -12,6 +13,7 @@ Professional input experience with:
 Falls back to built-in input() if prompt_toolkit is not installed.
 """
 
+import shutil
 from pathlib import Path
 
 try:
@@ -43,56 +45,40 @@ _SLASH_COMMANDS = [
     "/cd",
 ]
 
-# prompt_toolkit color scheme (Claude Code inspired)
+# ANSI colors
+_BRAND = "\033[38;5;173m"  # #d77757 orange
+_DIM = "\033[38;5;240m"  # dark gray
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+
+# Symbols
+_PROMPT_SYMBOL = "\u25b8"  # ▸
+_LINE = "\u2500"  # ─
+
+# prompt_toolkit color scheme
 _PT_STYLE = None
 if _HAS_PROMPT_TOOLKIT:
     _PT_STYLE = PTStyle.from_dict(
         {
-            # Completion menu
             "completion-menu.completion": "bg:#2d2d2d #e0e0e0",
             "completion-menu.completion.current": "bg:#d77757 #ffffff bold",
             "completion-menu.meta.completion": "#888888",
             "completion-menu.meta.completion.current": "#ffffff",
-            # Scrollbar
             "scrollbar.background": "bg:#333333",
             "scrollbar.button": "bg:#666666",
-            # Bottom toolbar
             "bottom-toolbar": "bg:#1a1a1a #888888",
             "bottom-toolbar.text": "#888888",
-            # Prompt
-            "prompt": "bold #d77757",
-            "prompt.sep": "#888888",
         }
     )
 
-# Box drawing characters for input frame
-_BOX_TOP_L = "╭"
-_BOX_TOP_R = "╮"
-_BOX_BOT_L = "╰"
-_BOX_BOT_R = "╯"
-_BOX_H = "─"
-_BOX_V = "│"
-_BOX_COLOR = "\033[38;5;240m"  # dark gray
-_BRAND_COLOR = "\033[38;5;173m"  # #d77757 approximate
-_RESET = "\033[0m"
 
-
-def _print_input_frame(width: int = 0):
-    """Print the input box frame (top border with label and hints)."""
-    import shutil
-
-    cols = width or shutil.get_terminal_size().columns
-    inner = cols - 2
+def print_separator():
+    """Print a visual separator line between output and input."""
+    cols = shutil.get_terminal_size().columns
     label = " shadow "
-    hint = " Alt+Enter: newline "
-    bar_mid = _BOX_H * max(0, inner - 2 - len(label) - len(hint))
-    print(
-        f"{_BOX_COLOR}{_BOX_TOP_L}{_BOX_H * 2}"
-        f"{_BRAND_COLOR}{label}"
-        f"{_BOX_COLOR}{bar_mid}"
-        f"\033[2m{hint}\033[22m"
-        f"{_BOX_COLOR}{_BOX_H * 2}{_BOX_TOP_R}{_RESET}"
-    )
+    bar_left = _LINE * 2
+    bar_right = _LINE * max(0, cols - len(bar_left) - len(label) - 1)
+    print(f"{_DIM}{bar_left}{_BRAND}{_BOLD}{label}{_RESET}{_DIM}{bar_right}{_RESET}")
 
 
 def create_prompt_session(state=None):
@@ -148,9 +134,6 @@ def create_prompt_session(state=None):
 
             return make_toolbar_html(state)
 
-    def _continuation(width, line_number, is_soft_wrap):
-        return f"  {_BOX_COLOR}{_BOX_V}{_RESET} "
-
     return PromptSession(
         history=FileHistory(str(history_path)),
         key_bindings=bindings,
@@ -159,7 +142,7 @@ def create_prompt_session(state=None):
         enable_history_search=True,
         style=_PT_STYLE,
         bottom_toolbar=toolbar,
-        prompt_continuation=_continuation,
+        prompt_continuation="   ",
     )
 
 
@@ -176,10 +159,10 @@ def get_input(session, model_name: str = "") -> str | None:
 
 
 def _get_input_prompt_toolkit(session) -> str | None:
-    """Get input with bordered input box."""
+    """Get input with styled prompt."""
     try:
-        _print_input_frame()
-        prompt_str = f"  {_BOX_COLOR}{_BOX_V}{_RESET} "
+        print_separator()
+        prompt_str = f"{_BRAND}{_PROMPT_SYMBOL}{_RESET} "
         text = session.prompt(prompt_str)
         if text is None:
             return None
@@ -191,10 +174,10 @@ def _get_input_prompt_toolkit(session) -> str | None:
 
 
 def _get_input_fallback() -> str | None:
-    """Fallback input with simple border."""
+    """Fallback input with separator."""
     try:
-        _print_input_frame()
-        text = input(f"  {_BOX_COLOR}{_BOX_V}{_RESET} ")
+        print_separator()
+        text = input(f"{_BRAND}{_PROMPT_SYMBOL}{_RESET} ")
         return text.strip()
     except EOFError:
         return None
