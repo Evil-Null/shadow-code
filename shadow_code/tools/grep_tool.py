@@ -1,7 +1,8 @@
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - subprocess is required for running rg/grep
+
 from .base import BaseTool, ToolResult
 
 _DEFAULT_MAX_RESULTS = 200
@@ -35,7 +36,7 @@ class GrepTool(BaseTool):
     def execute(self, params: dict) -> ToolResult:
         pattern = params["pattern"]
         path = params.get("path", self.ctx.cwd)
-        include = params.get("include", None)
+        include = params.get("include")
         case_insensitive = params.get("case_insensitive", False)
         max_results = params.get("max_results", _DEFAULT_MAX_RESULTS)
 
@@ -88,7 +89,7 @@ def _try_ripgrep(
     cmd += [pattern, path]
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 - cmd is constructed internally, not from user input
             cmd,
             capture_output=True,
             text=True,
@@ -98,7 +99,7 @@ def _try_ripgrep(
         return None
     except subprocess.TimeoutExpired:
         return ToolResult(False, "Search timed out after 30s")
-    except Exception as e:
+    except Exception:
         return None  # Fall through to next tier
 
     if proc.returncode == 2:
@@ -143,7 +144,7 @@ def _try_system_grep(
     cmd += [pattern, path]
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 - cmd is constructed internally, not from user input
             cmd,
             capture_output=True,
             text=True,
@@ -186,7 +187,7 @@ def _python_grep(
     except re.error as e:
         return ToolResult(False, f"Invalid regex: {e}")
 
-    matches = []
+    matches: list[str] = []
 
     # Handle single file
     if os.path.isfile(path):
@@ -237,7 +238,7 @@ def _search_file(
         return
 
     try:
-        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line_num, line in enumerate(f, 1):
                 if compiled.search(line):
                     # Strip trailing newline for clean output

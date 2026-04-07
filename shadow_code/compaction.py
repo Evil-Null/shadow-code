@@ -7,8 +7,8 @@
 
 import re
 
+from .config import COMPACTION_MODEL
 from .ollama_client import OllamaClient
-
 
 # Aggressive no-tools preamble (from Claude Code -- prevents wasted turns)
 _NO_TOOLS = """CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
@@ -17,7 +17,9 @@ You already have all the context you need in the conversation above.
 Your entire response must be plain text: an <analysis> block followed by a <summary> block.
 """
 
-COMPACT_PROMPT = _NO_TOOLS + """Your task is to create a detailed summary of the conversation so far,
+COMPACT_PROMPT = (
+    _NO_TOOLS
+    + """Your task is to create a detailed summary of the conversation so far,
 paying close attention to the user's explicit requests and your previous actions.
 This summary should be thorough in capturing technical details, code patterns,
 and architectural decisions essential for continuing work without losing context.
@@ -90,6 +92,7 @@ Your summary should include these sections:
 
 REMINDER: Do NOT call any tools. Respond with plain text only.
 """
+)
 
 
 def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> str:
@@ -109,7 +112,7 @@ def compact(client: OllamaClient, messages: list[dict], system_prompt: str) -> s
     compact_messages = messages + [{"role": "user", "content": COMPACT_PROMPT}]
 
     full_response = ""
-    for chunk in client.chat_stream(compact_messages, system_prompt):
+    for chunk in client.chat_stream(compact_messages, system_prompt, model=COMPACTION_MODEL):
         full_response += chunk
 
     if not full_response.strip():

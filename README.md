@@ -28,7 +28,7 @@ shadow> find all python files with syntax errors
 
   > grep syntax error **/*.py
     src/parser.py:45: syntax error near "def"
-    
+
   > read_file src/parser.py
     ...line 45 shown with context...
 

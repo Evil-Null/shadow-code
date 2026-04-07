@@ -20,15 +20,13 @@ Usage:
         # process text...
 """
 
-import os
 from pathlib import Path
 
 try:
     from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import WordCompleter
     from prompt_toolkit.history import FileHistory
     from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit.completion import WordCompleter
-    from prompt_toolkit.formatted_text import HTML
 
     _HAS_PROMPT_TOOLKIT = True
 except ImportError:
@@ -128,7 +126,7 @@ def _get_input_prompt_toolkit(session) -> str | None:
         text = session.prompt("shadow> ")
         if text is None:
             return None  # Ctrl+D via keybinding
-        return text.strip()
+        return str(text.strip())
     except EOFError:
         return None
     except KeyboardInterrupt:

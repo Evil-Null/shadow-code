@@ -104,10 +104,10 @@ class ToolContext:
     def __init__(self, initial_cwd: str):
         self.cwd = initial_cwd           # updated by bash after every command
         self.read_files: set[str] = set() # tracks files read by read_file
-    
+
     def mark_file_read(self, path: str):
         self.read_files.add(os.path.abspath(path))
-    
+
     def was_file_read(self, path: str) -> bool:
         return os.path.abspath(path) in self.read_files
 ```
@@ -1132,7 +1132,7 @@ User confirmation via prompt_toolkit before execution.
 After each turn, show context usage (color-coded):
 ```
   Context: 45K/128K (35%)     <- green
-  Context: 85K/128K (66%)     <- yellow  
+  Context: 85K/128K (66%)     <- yellow
   Context: 110K/128K (86%)    <- red
 ```
 

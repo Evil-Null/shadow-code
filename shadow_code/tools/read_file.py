@@ -1,6 +1,7 @@
 import os
+
+from ..config import BLOCKED_PATHS, MAX_LINES_TO_READ
 from .base import BaseTool, ToolResult
-from ..config import MAX_LINES_TO_READ, BLOCKED_PATHS
 
 
 class ReadFileTool(BaseTool):
@@ -45,10 +46,10 @@ class ReadFileTool(BaseTool):
 
         # Read with encoding fallback
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 all_lines = f.readlines()
         except UnicodeDecodeError:
-            with open(path, "r", encoding="latin-1") as f:
+            with open(path, encoding="latin-1") as f:
                 all_lines = f.readlines()
 
         total = len(all_lines)

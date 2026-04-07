@@ -1,4 +1,5 @@
 import os
+
 from .base import BaseTool, ToolResult
 
 
@@ -75,11 +76,12 @@ def _human_size(size_bytes: int) -> str:
     if size_bytes < 1024:
         return f"{size_bytes} B"
 
+    size: float = float(size_bytes)
     for unit in ("KB", "MB", "GB", "TB"):
-        size_bytes /= 1024.0
-        if size_bytes < 1024.0 or unit == "TB":
-            if size_bytes == int(size_bytes):
-                return f"{int(size_bytes)} {unit}"
-            return f"{size_bytes:.1f} {unit}"
+        size /= 1024.0
+        if size < 1024.0 or unit == "TB":
+            if size == int(size):
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
 
-    return f"{size_bytes:.1f} TB"
+    return f"{size:.1f} TB"

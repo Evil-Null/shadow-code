@@ -1,0 +1,30 @@
+# Build artifacts and packaging
+shadow_code.egg-info/
+dist/
+build/
+*.egg
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Tool caches (334+ files of noise)
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Historical planning docs (Georgian/English, not needed for coding)
+docs/
+
+# Runtime data
+*.db
+*.sqlite
+
+# Environment
+.env
+.venv/
+
+# IDE
+.vscode/
+.idea/

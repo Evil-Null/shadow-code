@@ -13,7 +13,6 @@
 
 import sys
 
-
 # The opening marker: three backticks followed by "tool_call"
 TAG_START = "```tool_call"
 # The closing marker: three backticks on their own line (after tool_call block)
@@ -34,8 +33,8 @@ class StreamDisplay:
 
     def __init__(self):
         self.buffer = ""
-        self.buffering = False      # True when inside a ```tool_call block
-        self.full_response = ""     # Accumulates ALL chunks (including hidden ones)
+        self.buffering = False  # True when inside a ```tool_call block
+        self.full_response = ""  # Accumulates ALL chunks (including hidden ones)
 
     def reset(self):
         """Reset state for a new streaming response."""
@@ -58,7 +57,7 @@ class StreamDisplay:
             if first_newline == -1:
                 # Haven't even finished the opening line yet
                 return
-            rest = self.buffer[first_newline + 1:]
+            rest = self.buffer[first_newline + 1 :]
             # Look for closing ``` -- it will be on its own line (possibly with whitespace)
             close_pos = self._find_closing_backticks(rest)
             if close_pos is not None:
@@ -67,7 +66,7 @@ class StreamDisplay:
                 # The closing ``` may be followed by a newline and more text
                 end_of_close = after_close.find("\n")
                 if end_of_close != -1:
-                    remaining = after_close[end_of_close + 1:]
+                    remaining = after_close[end_of_close + 1 :]
                     if remaining:
                         sys.stdout.write(remaining)
                         sys.stdout.flush()
@@ -114,7 +113,7 @@ class StreamDisplay:
             # Check that this ``` is at the start of a line (or start of text)
             if idx == 0 or text[idx - 1] == "\n":
                 # Make sure this isn't another opening like ```python (just closing ```)
-                after = text[idx + 3:]
+                after = text[idx + 3 :]
                 # Closing ``` is followed by nothing, whitespace, or newline
                 if not after or after[0] in ("\n", "\r", " ", "\t"):
                     return idx
@@ -155,4 +154,4 @@ class StreamDisplay:
 
     def get_full_response(self) -> str:
         """Return the complete response text (including hidden tool_call blocks)."""
-        return self.full_response
+        return str(self.full_response)

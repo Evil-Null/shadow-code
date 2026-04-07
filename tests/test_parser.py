@@ -5,7 +5,8 @@ confirmed as the model's natural preference.
 """
 
 import unittest
-from shadow_code.parser import parse_tool_calls, ToolCall, TOOL_CALL_RE
+
+from shadow_code.parser import TOOL_CALL_RE, parse_tool_calls
 
 
 class TestToolCallRegex(unittest.TestCase):
@@ -47,7 +48,7 @@ class TestParseToolCalls(unittest.TestCase):
 
     def test_multiple_tool_calls(self):
         text = (
-            'Checking both:\n'
+            "Checking both:\n"
             '```tool_call\n{"tool": "bash", "params": {"command": "pwd"}}\n```\n'
             '```tool_call\n{"tool": "bash", "params": {"command": "ls"}}\n```'
         )
@@ -63,7 +64,7 @@ class TestParseToolCalls(unittest.TestCase):
         self.assertEqual(clean, text)
 
     def test_invalid_json(self):
-        text = '```tool_call\n{not valid json}\n```'
+        text = "```tool_call\n{not valid json}\n```"
         clean, calls = parse_tool_calls(text)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0].tool, "__invalid__")
@@ -132,10 +133,10 @@ class TestParseToolCalls(unittest.TestCase):
 
     def test_tool_call_with_complex_params(self):
         text = (
-            '```tool_call\n'
+            "```tool_call\n"
             '{"tool": "edit_file", "params": {"file_path": "/tmp/test.py", '
             '"old_string": "def foo():", "new_string": "def bar():"}}\n'
-            '```'
+            "```"
         )
         _, calls = parse_tool_calls(text)
         self.assertEqual(len(calls), 1)
@@ -149,6 +150,7 @@ class TestConversation(unittest.TestCase):
 
     def test_add_messages(self):
         from shadow_code.conversation import Conversation
+
         conv = Conversation()
         conv.add_user("hello")
         conv.add_assistant("hi")
@@ -159,6 +161,7 @@ class TestConversation(unittest.TestCase):
 
     def test_add_tool_results(self):
         from shadow_code.conversation import Conversation
+
         conv = Conversation()
         conv.add_tool_results('<tool_result tool="bash" success="true">\nfoo\n</tool_result>')
         msgs = conv.get_messages()
@@ -169,6 +172,7 @@ class TestConversation(unittest.TestCase):
 
     def test_clear(self):
         from shadow_code.conversation import Conversation
+
         conv = Conversation()
         conv.add_user("hello")
         conv.add_assistant("hi")
@@ -178,18 +182,22 @@ class TestConversation(unittest.TestCase):
         self.assertEqual(conv.total_prompt_tokens, 0)
 
     def test_result_clearing(self):
-        from shadow_code.conversation import Conversation, KEEP_RECENT_RESULTS
+        from shadow_code.conversation import KEEP_RECENT_RESULTS, Conversation
+
         conv = Conversation()
         # Add more tool results than KEEP_RECENT_RESULTS
         for i in range(KEEP_RECENT_RESULTS + 3):
-            conv.add_tool_results(f'<tool_result tool="bash" success="true">\nresult {i}\n</tool_result>')
+            conv.add_tool_results(
+                f'<tool_result tool="bash" success="true">\nresult {i}\n</tool_result>'
+            )
         conv.clear_old_tool_results()
         # First 3 should be cleared, last KEEP_RECENT_RESULTS kept
         cleared = [m for m in conv.get_messages() if "cleared to save context" in m["content"]]
         self.assertEqual(len(cleared), 3)
 
     def test_emergency_truncate(self):
-        from shadow_code.conversation import Conversation, KEEP_RECENT_MESSAGES
+        from shadow_code.conversation import KEEP_RECENT_MESSAGES, Conversation
+
         conv = Conversation()
         for i in range(KEEP_RECENT_MESSAGES + 10):
             conv.add_user(f"msg {i}")
@@ -199,7 +207,8 @@ class TestConversation(unittest.TestCase):
         self.assertIn("truncated", conv.get_messages()[0]["content"])
 
     def test_emergency_truncate_small_history(self):
-        from shadow_code.conversation import Conversation, KEEP_RECENT_MESSAGES
+        from shadow_code.conversation import Conversation
+
         conv = Conversation()
         for i in range(5):
             conv.add_user(f"msg {i}")
@@ -213,11 +222,13 @@ class TestToolContext(unittest.TestCase):
 
     def test_initial_cwd(self):
         from shadow_code.tool_context import ToolContext
+
         ctx = ToolContext("/tmp")
         self.assertEqual(ctx.cwd, "/tmp")
 
     def test_mark_and_check_file(self):
         from shadow_code.tool_context import ToolContext
+
         ctx = ToolContext("/tmp")
         ctx.mark_file_read("/tmp/test.py")
         self.assertTrue(ctx.was_file_read("/tmp/test.py"))
@@ -225,6 +236,7 @@ class TestToolContext(unittest.TestCase):
 
     def test_read_files_initially_empty(self):
         from shadow_code.tool_context import ToolContext
+
         ctx = ToolContext("/home")
         self.assertEqual(len(ctx.read_files), 0)
 
@@ -233,14 +245,16 @@ class TestToolRegistry(unittest.TestCase):
     """Tests for tool registry and dispatch."""
 
     def test_register_and_dispatch(self):
-        from shadow_code.tools import register, dispatch, _REGISTRY
+        from shadow_code.tools import _REGISTRY, dispatch, register
         from shadow_code.tools.base import BaseTool, ToolResult
 
         # Save and restore registry state
         saved = dict(_REGISTRY)
         try:
+
             class DummyTool(BaseTool):
                 name = "dummy"
+
                 def execute(self, params: dict) -> ToolResult:
                     return ToolResult(True, f"got: {params.get('x', '')}")
 
@@ -254,6 +268,7 @@ class TestToolRegistry(unittest.TestCase):
 
     def test_dispatch_unknown_tool(self):
         from shadow_code.tools import dispatch
+
         result = dispatch("nonexistent_tool_xyz", {})
         self.assertFalse(result.success)
         self.assertIn("Unknown tool", result.output)
@@ -261,6 +276,7 @@ class TestToolRegistry(unittest.TestCase):
     def test_format_result(self):
         from shadow_code.tools import format_result
         from shadow_code.tools.base import ToolResult
+
         formatted = format_result("bash", ToolResult(True, "hello world"))
         self.assertIn('<tool_result tool="bash" success="true">', formatted)
         self.assertIn("hello world", formatted)
@@ -268,12 +284,14 @@ class TestToolRegistry(unittest.TestCase):
     def test_format_result_failure(self):
         from shadow_code.tools import format_result
         from shadow_code.tools.base import ToolResult
+
         formatted = format_result("bash", ToolResult(False, "command not found"))
         self.assertIn('success="false"', formatted)
 
     def test_truncate(self):
-        from shadow_code.tools import _truncate
         from shadow_code.config import TOOL_OUTPUT_MAX_CHARS
+        from shadow_code.tools import _truncate
+
         short = "hello"
         self.assertEqual(_truncate(short), short)
         long = "x" * (TOOL_OUTPUT_MAX_CHARS + 1000)
@@ -286,8 +304,9 @@ class TestBashTool(unittest.TestCase):
     """Tests for the bash tool."""
 
     def test_simple_command(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         result = bash.execute({"command": "echo hello"})
@@ -295,8 +314,9 @@ class TestBashTool(unittest.TestCase):
         self.assertEqual(result.output.strip(), "hello")
 
     def test_command_failure(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         result = bash.execute({"command": "false"})
@@ -304,8 +324,9 @@ class TestBashTool(unittest.TestCase):
         self.assertIn("exit code", result.output)
 
     def test_validate_missing_command(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         err = bash.validate({})
@@ -313,8 +334,9 @@ class TestBashTool(unittest.TestCase):
         self.assertIn("Missing", err)
 
     def test_validate_empty_command(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         err = bash.validate({"command": "  "})
@@ -322,8 +344,9 @@ class TestBashTool(unittest.TestCase):
         self.assertIn("empty", err)
 
     def test_validate_interactive_command(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         err = bash.validate({"command": "vim test.py"})
@@ -331,27 +354,31 @@ class TestBashTool(unittest.TestCase):
         self.assertIn("Interactive", err)
 
     def test_cwd_tracking(self):
-        from shadow_code.tools.bash import BashTool
-        from shadow_code.tool_context import ToolContext
         import tempfile
+
+        from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         # cd to a known directory
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = bash.execute({"command": f"cd {tmpdir}"})
+            bash.execute({"command": f"cd {tmpdir}"})
             self.assertEqual(ctx.cwd, tmpdir)
 
     def test_stderr_included(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         result = bash.execute({"command": "echo err >&2"})
         self.assertIn("STDERR", result.output)
 
     def test_timeout(self):
-        from shadow_code.tools.bash import BashTool
         from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         ctx = ToolContext("/tmp")
         bash = BashTool(ctx)
         result = bash.execute({"command": "sleep 10", "timeout": 1})
@@ -359,9 +386,11 @@ class TestBashTool(unittest.TestCase):
         self.assertIn("Timed out", result.output)
 
     def test_respects_cwd(self):
-        from shadow_code.tools.bash import BashTool
-        from shadow_code.tool_context import ToolContext
         import tempfile
+
+        from shadow_code.tool_context import ToolContext
+        from shadow_code.tools.bash import BashTool
+
         with tempfile.TemporaryDirectory() as tmpdir:
             ctx = ToolContext(tmpdir)
             bash = BashTool(ctx)

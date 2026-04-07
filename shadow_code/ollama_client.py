@@ -5,9 +5,10 @@
 # so conversation.py can manage context window usage.
 
 import json
+
 import requests
 
-from .config import OLLAMA_BASE_URL, MODEL_NAME, MODEL_OPTIONS
+from .config import MODEL_NAME, MODEL_OPTIONS, OLLAMA_BASE_URL
 
 
 class OllamaClient:
@@ -38,12 +39,13 @@ class OllamaClient:
         except requests.RequestException as e:
             return False, f"Ollama error: {e}"
 
-    def chat_stream(self, messages: list[dict], system: str):
+    def chat_stream(self, messages: list[dict], system: str, model: str | None = None):
         """Stream a chat completion from Ollama.
 
         Args:
             messages: Conversation history (list of {"role": ..., "content": ...}).
             system: The system prompt (static string for KV cache).
+            model: Optional model override. Defaults to MODEL_NAME from config.
 
         Yields:
             str: Content chunks as they arrive.
@@ -52,7 +54,7 @@ class OllamaClient:
         are updated from the final response's statistics.
         """
         payload = {
-            "model": MODEL_NAME,
+            "model": model or MODEL_NAME,
             "messages": [{"role": "system", "content": system}] + messages,
             "stream": True,
             "options": MODEL_OPTIONS,

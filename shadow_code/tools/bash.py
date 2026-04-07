@@ -1,9 +1,10 @@
-import subprocess
 import os
-import signal
 import shlex
-from .base import BaseTool, ToolResult
+import signal
+import subprocess  # nosec B404 - subprocess is required for shell tool functionality
+
 from ..config import BASH_DEFAULT_TIMEOUT, BASH_MAX_TIMEOUT, INTERACTIVE_CMDS
+from .base import BaseTool, ToolResult
 
 
 class BashTool(BaseTool):
@@ -27,7 +28,7 @@ class BashTool(BaseTool):
         command = params["command"]
         timeout = min(params.get("timeout", BASH_DEFAULT_TIMEOUT), BASH_MAX_TIMEOUT)
         try:
-            proc = subprocess.Popen(
+            proc = subprocess.Popen(  # noqa: S602  # nosec B602 - shell=True is intentional for a coding assistant shell tool
                 command,
                 shell=True,
                 stdout=subprocess.PIPE,

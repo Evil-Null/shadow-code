@@ -12,6 +12,7 @@ from .display import StreamDisplay
 
 class StreamCancelled(Exception):
     """Raised when the user interrupts streaming with Ctrl+C."""
+
     pass
 
 
@@ -73,7 +74,7 @@ class StreamController:
             remaining = self._flush_and_capture()
             if remaining:
                 accumulated_visible += remaining
-            raise StreamCancelled()
+            raise StreamCancelled() from None
 
         # Print final visible text OUTSIDE Live (so it stays on screen permanently)
         if accumulated_visible.strip():
@@ -92,7 +93,7 @@ class StreamController:
         except KeyboardInterrupt:
             self.display.flush()
             print()
-            raise StreamCancelled()
+            raise StreamCancelled() from None
 
         self.display.flush()
         print()

@@ -18,13 +18,13 @@ Usage:
 """
 
 import sqlite3
-import os
 from datetime import datetime
 from pathlib import Path
 
 
 class DatabaseError(Exception):
     """Raised when a database operation fails."""
+
     pass
 
 
@@ -92,12 +92,11 @@ class Database:
         now = datetime.now().isoformat()
         try:
             cur = self._conn.execute(
-                "INSERT INTO sessions (name, model, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO sessions (name, model, created_at, updated_at) VALUES (?, ?, ?, ?)",
                 (name, model, now, now),
             )
             self._conn.commit()
-            return cur.lastrowid
+            return cur.lastrowid or 0
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to create session: {e}") from e
 
@@ -112,8 +111,7 @@ class Database:
         now = datetime.now().isoformat()
         try:
             self._conn.execute(
-                "INSERT INTO messages (session_id, role, content, timestamp) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
                 (session_id, role, content, now),
             )
             self._conn.execute(
@@ -158,8 +156,7 @@ class Database:
                 return None
 
             messages = self._conn.execute(
-                "SELECT role, content, timestamp FROM messages "
-                "WHERE session_id = ? ORDER BY id",
+                "SELECT role, content, timestamp FROM messages WHERE session_id = ? ORDER BY id",
                 (session_id,),
             ).fetchall()
 
@@ -171,7 +168,11 @@ class Database:
                 "updated_at": row["updated_at"],
                 "total_tokens": row["total_tokens"],
                 "messages": [
-                    {"role": m["role"], "content": m["content"], "timestamp": m["timestamp"]}
+                    {
+                        "role": m["role"],
+                        "content": m["content"],
+                        "timestamp": m["timestamp"],
+                    }
                     for m in messages
                 ],
             }
@@ -221,9 +222,7 @@ class Database:
             True if the session existed and was deleted, False otherwise.
         """
         try:
-            cur = self._conn.execute(
-                "DELETE FROM sessions WHERE id = ?", (session_id,)
-            )
+            cur = self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             self._conn.commit()
             return cur.rowcount > 0
         except sqlite3.Error as e:
@@ -251,10 +250,10 @@ class Database:
 
     def close(self):
         """Close the database connection."""
-        try:
+        import contextlib
+
+        with contextlib.suppress(sqlite3.Error):
             self._conn.close()
-        except sqlite3.Error:
-            pass  # best-effort close
 
     def __enter__(self):
         return self

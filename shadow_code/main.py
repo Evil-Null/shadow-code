@@ -17,34 +17,38 @@ import signal
 import sys
 from datetime import datetime
 
+from . import tools as tool_reg
 from .config import CONTEXT_WINDOW, MAX_CONSECUTIVE_ERRORS, MAX_TOOL_TURNS, MODEL_NAME
 from .conversation import Conversation
 from .display import StreamDisplay
 from .ollama_client import OllamaClient
 from .parser import parse_tool_calls
 from .prompt import SYSTEM_PROMPT
-from .tool_context import ToolContext
-from . import tools as tool_reg
 from .safety import check_destructive
 from .skills import get_skill, list_skills
+from .tool_context import ToolContext
 
 # Optional imports -- graceful fallback
 try:
     from rich.console import Console
-    from .ui import UIRenderer, HAS_RICH
-    from .streaming import StreamController, StreamCancelled
+
+    from .streaming import StreamCancelled, StreamController
+    from .ui import HAS_RICH, UIRenderer
+
     _RICH = HAS_RICH
 except ImportError:
     _RICH = False
 
 try:
     from .repl import create_prompt_session, get_input
+
     _HAS_REPL = True
 except ImportError:
     _HAS_REPL = False
 
 try:
     from .db import Database
+
     _HAS_DB = True
 except ImportError:
     _HAS_DB = False
@@ -56,6 +60,7 @@ def main():
 
     # Register all tools
     from .tools.bash import BashTool
+
     tool_reg.register(BashTool(ctx))
     _register_optional_tools(ctx)
 
@@ -82,10 +87,7 @@ def main():
         print(f"CWD: {cwd}")
 
     # Setup REPL
-    if _HAS_REPL:
-        prompt_session = create_prompt_session()
-    else:
-        prompt_session = None
+    prompt_session = create_prompt_session() if _HAS_REPL else None
 
     # Setup DB
     db = None
@@ -107,6 +109,7 @@ def main():
     def on_sigint(signum, frame):
         nonlocal interrupted
         interrupted = True
+
     signal.signal(signal.SIGINT, on_sigint)
 
     while True:
@@ -164,6 +167,7 @@ def main():
                 print(f"  CWD: {ctx.cwd}")
             else:
                 import os as _os
+
                 new = _os.path.normpath(_os.path.join(ctx.cwd, _os.path.expanduser(target)))
                 if _os.path.isdir(new):
                     ctx.cwd = new
@@ -174,6 +178,7 @@ def main():
 
         if user_input == "/version":
             from . import __version__
+
             print(f"  shadow-code v{__version__}")
             print(f"  Model: {MODEL_NAME}")
             print(f"  Context: {CONTEXT_WINDOW // 1024}K")
@@ -195,6 +200,7 @@ def main():
                 print("[Compacting conversation...]")
                 try:
                     from .compaction import compact
+
                     summary = compact(client, conv.get_messages(), SYSTEM_PROMPT)
                     conv.apply_compaction_summary(summary)
                     print("[Compaction complete]")
@@ -345,7 +351,8 @@ def main():
             if _RICH and stream_ctrl:
                 try:
                     resp, eval_tokens = stream_ctrl.stream_response(
-                        conv.get_messages(), SYSTEM_PROMPT)
+                        conv.get_messages(), SYSTEM_PROMPT
+                    )
                 except StreamCancelled:
                     print("[Interrupted]")
                     break
@@ -411,12 +418,11 @@ def main():
                             new = tc.params.get("new_string", "")[:40]
                             desc += f'  "{old}" -> "{new}"'
                         elif tc.tool == "write_file":
-                            content_preview = tc.params.get("content", "")[:60]
                             desc += f"  ({len(tc.params.get('content', ''))} chars)"
                     elif tc.tool == "grep":
                         desc = f'"{tc.params.get("pattern", "")}" in {tc.params.get("path", ".")}'
                     elif tc.tool == "glob":
-                        desc = f'{tc.params.get("pattern", "")} in {tc.params.get("path", ".")}'
+                        desc = f"{tc.params.get('pattern', '')} in {tc.params.get('path', '.')}"
                     else:
                         desc = str(tc.params)[:80]
 
@@ -445,11 +451,12 @@ def main():
                     if _RICH:
                         console.print(ui.render_tool_result(tc.tool, r.output, r.success))
                     else:
-                        status = "ok" if r.success else "fail"
                         print(f"  [{tc.tool}] {desc}")
                         # Show enough output to see what happened
                         max_lines = 30 if tc.tool in ("read_file", "bash", "grep") else 15
-                        max_chars = 2000 if tc.tool in ("read_file", "write_file", "edit_file") else 800
+                        max_chars = (
+                            2000 if tc.tool in ("read_file", "write_file", "edit_file") else 800
+                        )
                         preview = r.output[:max_chars]
                         if len(r.output) > max_chars:
                             preview += f"\n    ... [{len(r.output) - max_chars} more chars]"
@@ -473,10 +480,13 @@ def main():
         # === Context status (always visible) ===
         conv.update_tokens(client.last_prompt_tokens)
         if conv.total_prompt_tokens > 0:
-            _show_context_status(conv.total_prompt_tokens, CONTEXT_WINDOW,
-                                 client.last_eval_tokens,
-                                 console if _RICH else None,
-                                 ui if _RICH else None)
+            _show_context_status(
+                conv.total_prompt_tokens,
+                CONTEXT_WINDOW,
+                client.last_eval_tokens,
+                console if _RICH else None,
+                ui if _RICH else None,
+            )
 
         # === 3-Tier Context Management ===
         if conv.needs_result_clearing():
@@ -486,6 +496,7 @@ def main():
             print("[Compacting conversation...]")
             try:
                 from .compaction import compact
+
                 summary = compact(client, conv.get_messages(), SYSTEM_PROMPT)
                 conv.apply_compaction_summary(summary)
                 print("[Compaction complete]")
@@ -515,14 +526,14 @@ def _register_optional_tools(ctx):
     for mod_path, cls_name in optional:
         try:
             import importlib
+
             mod = importlib.import_module(mod_path)
             tool_reg.register(getattr(mod, cls_name)(ctx))
         except (ImportError, AttributeError):
             pass
 
 
-def _show_context_status(used: int, total: int, last_eval: int,
-                         console=None, ui=None):
+def _show_context_status(used: int, total: int, last_eval: int, console=None, ui=None):
     """Show context usage after every turn. Works in both Rich and plain mode."""
     pct = (used / total * 100) if total else 0
     bar_width = 20
@@ -534,14 +545,14 @@ def _show_context_status(used: int, total: int, last_eval: int,
     else:
         # Soft ANSI colors (Claude Code inspired)
         if pct < 50:
-            color = "\033[38;5;71m"   # soft green
+            color = "\033[38;5;71m"  # soft green
         elif pct < 75:
             color = "\033[38;5;179m"  # soft amber
         else:
             color = "\033[38;5;167m"  # soft red
         dim = "\033[2m"
         reset = "\033[0m"
-        print(f"  {color}[{bar}] {used//1000}K/{total//1000}K{reset} {dim}({pct:.0f}%){reset}")
+        print(f"  {color}[{bar}] {used // 1000}K/{total // 1000}K{reset} {dim}({pct:.0f}%){reset}")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
-import os
 import fnmatch
+import os
+
 from .base import BaseTool, ToolResult
 
 # Directories to skip during walk -- never descend into these
@@ -50,9 +51,7 @@ class GlobTool(BaseTool):
 
         for dirpath, dirnames, filenames in os.walk(root):
             # Prune unwanted directories IN PLACE so os.walk skips them
-            dirnames[:] = [
-                d for d in dirnames if d not in _PRUNE_DIRS
-            ]
+            dirnames[:] = [d for d in dirnames if d not in _PRUNE_DIRS]
 
             for filename in filenames:
                 filepath = os.path.join(dirpath, filename)
@@ -99,10 +98,8 @@ def _match(relpath: str, pattern: str, has_globstar: bool) -> bool:
             prefix_pattern, suffix_pattern = parts
             # prefix_pattern might be empty (pattern starts with **/)
             # or might be a dir like "src/"
-            if prefix_pattern:
-                # relpath must start with something matching prefix
-                if not relpath.startswith(prefix_pattern.rstrip("/")):
-                    return False
+            if prefix_pattern and not relpath.startswith(prefix_pattern.rstrip("/")):
+                return False
             # The suffix_pattern should match the filename or trailing path
             # Try matching against every suffix of the relpath
             segments = relpath.split("/")
@@ -130,7 +127,7 @@ def _recursive_globstar_match(relpath: str, pattern: str) -> bool:
     # First, split on **
     parts = pattern.split("**")
     regex_parts = []
-    for i, part in enumerate(parts):
+    for _i, part in enumerate(parts):
         # Convert each non-** part from glob to regex
         converted = ""
         for ch in part:

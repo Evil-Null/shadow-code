@@ -4,15 +4,12 @@
 # Adapted from Claude Code's dark theme palette (src/utils/theme.ts).
 
 try:
-    from rich.console import Group
+    from rich.box import MINIMAL, ROUNDED, SIMPLE
     from rich.markdown import Markdown
     from rich.panel import Panel
-    from rich.rule import Rule
     from rich.spinner import Spinner
     from rich.table import Table
     from rich.text import Text
-    from rich.box import SIMPLE, ROUNDED, MINIMAL
-    from rich import box
 
     HAS_RICH = True
 except ImportError:
@@ -21,14 +18,14 @@ except ImportError:
 from .config import MODEL_NAME
 
 # Claude Code inspired colors (soft, not screaming)
-_CLAUDE_ORANGE = "#d77757"    # Claude's brand -- for assistant identity
-_SUBTLE = "#888888"           # dim text, borders, secondary info
-_TEXT = "#e0e0e0"             # primary text
-_SUCCESS = "#5faf5f"          # soft green
-_ERROR = "#d75f5f"            # soft red
-_WARNING = "#d7af5f"          # soft amber
-_TOOL = "#5f87d7"             # soft blue -- for tool calls
-_ACCENT = "#af87d7"           # soft purple -- for highlights
+_CLAUDE_ORANGE = "#d77757"  # Claude's brand -- for assistant identity
+_SUBTLE = "#888888"  # dim text, borders, secondary info
+_TEXT = "#e0e0e0"  # primary text
+_SUCCESS = "#5faf5f"  # soft green
+_ERROR = "#d75f5f"  # soft red
+_WARNING = "#d7af5f"  # soft amber
+_TOOL = "#5f87d7"  # soft blue -- for tool calls
+_ACCENT = "#af87d7"  # soft purple -- for highlights
 
 
 class UIRenderer:
@@ -38,9 +35,9 @@ class UIRenderer:
         content = Text()
         content.append("\n  shadow", style=f"bold {_CLAUDE_ORANGE}")
         content.append("-code", style=f"{_SUBTLE}")
-        content.append(f"  v0.1.0\n", style=f"dim")
-        content.append(f"  {MODEL_NAME}\n", style=f"dim")
-        content.append("  /help for commands\n", style=f"dim italic")
+        content.append("  v0.1.0\n", style="dim")
+        content.append(f"  {MODEL_NAME}\n", style="dim")
+        content.append("  /help for commands\n", style="dim italic")
         return Panel(content, border_style=_SUBTLE, box=ROUNDED, padding=(0, 0))
 
     def render_thinking(self, model: str = "") -> "Panel":
@@ -73,12 +70,16 @@ class UIRenderer:
         color = _SUCCESS if success else _ERROR
         # Show more output for file operations (code should be visible)
         max_chars = 3000 if tool in ("read_file", "write_file", "edit_file", "bash") else 1000
-        preview = output[:max_chars] + (f"\n... [{len(output) - max_chars} more chars]" if len(output) > max_chars else "")
+        preview = output[:max_chars] + (
+            f"\n... [{len(output) - max_chars} more chars]" if len(output) > max_chars else ""
+        )
         title = f"[{color}]{tool}[/{color}]"
 
         # Use syntax highlighting for file content
+        body: Text | object
         if tool in ("read_file", "bash", "grep") and len(preview) > 10:
             from rich.syntax import Syntax
+
             try:
                 body = Syntax(preview, "text", theme="monokai", line_numbers=False)
             except Exception:

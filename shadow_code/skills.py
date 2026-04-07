@@ -57,7 +57,7 @@ Git Safety:
 - NEVER skip hooks (--no-verify)
 - NEVER amend unless explicitly asked
 - If pre-commit hook fails, fix the issue and create a NEW commit
-- Do NOT push unless explicitly asked"""
+- Do NOT push unless explicitly asked""",
 )
 
 register_skill(
@@ -85,7 +85,7 @@ Efficiency:
 - Unnecessary string concatenation in loops
 - Large objects copied when a reference would work
 
-3. Fix any issues found directly. Don't just report -- fix them."""
+3. Fix any issues found directly. Don't just report -- fix them.""",
 )
 
 register_skill(
@@ -101,7 +101,7 @@ register_skill(
    - Performance issues
    - Code style and readability
 3. Report findings with file_path:line_number references
-4. Suggest fixes for each issue found"""
+4. Suggest fixes for each issue found""",
 )
 
 register_skill(
@@ -117,7 +117,7 @@ register_skill(
    - Dependencies and interactions with other modules
    - Any non-obvious logic or clever patterns
 3. Use clear language. If the user writes in Georgian, explain in Georgian.
-   Keep technical terms in English."""
+   Keep technical terms in English.""",
 )
 
 register_skill(
@@ -133,7 +133,7 @@ register_skill(
    - Trace the data flow that leads to the error
    - Check edge cases and error handling
 5. Fix the issue with edit_file
-6. Suggest how to verify the fix (run test, execute script, etc.)"""
+6. Suggest how to verify the fix (run test, execute script, etc.)""",
 )
 
 register_skill(
@@ -148,7 +148,7 @@ register_skill(
    - What's the simplest solution?
    - What does the existing codebase do in similar cases?
    - Are there any constraints or requirements being missed?
-5. Propose a concrete next step with specific code changes"""
+5. Propose a concrete next step with specific code changes""",
 )
 
 register_skill(
@@ -171,7 +171,7 @@ register_skill(
 
 Important:
 - Look at ALL commits, not just the most recent
-- Return the PR URL when done"""
+- Return the PR URL when done""",
 )
 
 register_skill(
@@ -196,7 +196,7 @@ register_skill(
    information and save it without asking unnecessary questions.
 
 4. If asked "what do you remember about X?", search the memory directory
-   with glob and grep for relevant files."""
+   with glob and grep for relevant files.""",
 )
 
 register_skill(
@@ -225,7 +225,7 @@ register_skill(
    - Re-verify
 
 IMPORTANT: Actually run the verification. Do not claim "should work" --
-prove it works by executing code and showing output."""
+prove it works by executing code and showing output.""",
 )
 
 register_skill(
@@ -251,7 +251,7 @@ register_skill(
    - Available commands (build, test, run)
    - Any issues found (missing dependencies, broken config)
 
-4. Suggest next steps based on what was found."""
+4. Suggest next steps based on what was found.""",
 )
 
 register_skill(
@@ -279,7 +279,7 @@ register_skill(
    - Read the failing test file
    - Read the source code being tested
    - Identify the root cause
-   - Fix and re-run"""
+   - Fix and re-run""",
 )
 
 register_skill(
@@ -306,7 +306,7 @@ register_skill(
 
 5. Verify:
    - If tests exist, run them
-   - If no tests, explain what you changed and why it's safe"""
+   - If no tests, explain what you changed and why it's safe""",
 )
 
 register_skill(
@@ -331,5 +331,5 @@ register_skill(
    - Show relevant code context
    - Explain how the pieces connect
 
-4. If searching for usage: trace the call chain from definition to all callers."""
+4. If searching for usage: trace the call chain from definition to all callers.""",
 )

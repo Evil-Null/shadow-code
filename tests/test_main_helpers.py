@@ -1,0 +1,203 @@
+"""Tests for main.py helper functions and slash command parsing.
+
+We test the helper functions and importable parts without running the full REPL.
+"""
+
+import io
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
+
+
+class TestShowContextStatus(unittest.TestCase):
+    """Tests for _show_context_status."""
+
+    def test_plain_mode_low(self):
+        from shadow_code.main import _show_context_status
+
+        captured = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = captured
+            _show_context_status(10000, 131072, 500)
+        finally:
+            sys.stdout = old
+        output = captured.getvalue()
+        self.assertIn("10K", output)
+        self.assertIn("131K", output)
+
+    def test_plain_mode_medium(self):
+        from shadow_code.main import _show_context_status
+
+        captured = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = captured
+            _show_context_status(80000, 131072, 500)
+        finally:
+            sys.stdout = old
+        output = captured.getvalue()
+        self.assertIn("80K", output)
+
+    def test_plain_mode_high(self):
+        from shadow_code.main import _show_context_status
+
+        captured = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = captured
+            _show_context_status(120000, 131072, 500)
+        finally:
+            sys.stdout = old
+        output = captured.getvalue()
+        self.assertIn("120K", output)
+
+
+class TestRegisterOptionalTools(unittest.TestCase):
+    """Tests for _register_optional_tools."""
+
+    def test_registers_tools(self):
+        from shadow_code.main import _register_optional_tools
+        from shadow_code.tool_context import ToolContext
+        from shadow_code.tools import _REGISTRY
+
+        ctx = ToolContext("/tmp")
+        saved = dict(_REGISTRY)
+        try:
+            _register_optional_tools(ctx)
+            # Should register the 6 optional tools
+            expected = {"read_file", "write_file", "edit_file", "glob", "grep", "list_dir"}
+            registered = set(_REGISTRY.keys())
+            self.assertTrue(
+                expected.issubset(registered),
+                f"Missing: {expected - registered}",
+            )
+        finally:
+            _REGISTRY.clear()
+            _REGISTRY.update(saved)
+
+
+class TestMainImports(unittest.TestCase):
+    """Test that main module is importable and has expected attributes."""
+
+    def test_main_function_exists(self):
+        from shadow_code.main import main
+
+        self.assertTrue(callable(main))
+
+    def test_register_optional_tools_exists(self):
+        from shadow_code.main import _register_optional_tools
+
+        self.assertTrue(callable(_register_optional_tools))
+
+    def test_show_context_status_exists(self):
+        from shadow_code.main import _show_context_status
+
+        self.assertTrue(callable(_show_context_status))
+
+
+class TestOllamaClient(unittest.TestCase):
+    """Basic tests for OllamaClient (no actual server required)."""
+
+    def test_init(self):
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        self.assertEqual(client.last_prompt_tokens, 0)
+        self.assertEqual(client.last_eval_tokens, 0)
+
+    def test_health_check_connection_error(self):
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        with patch("shadow_code.ollama_client.OLLAMA_BASE_URL", "http://localhost:99999"):
+            ok, msg = client.health_check()
+            self.assertFalse(ok)
+            self.assertIsInstance(msg, str)
+            self.assertGreater(len(msg), 0)
+
+    def test_health_check_model_found(self):
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"models": [{"name": "test-model:latest"}]}
+        mock_resp.raise_for_status = MagicMock()
+        with (
+            patch("shadow_code.ollama_client.MODEL_NAME", "test-model:latest"),
+            patch("shadow_code.ollama_client.requests.get", return_value=mock_resp),
+        ):
+            ok, msg = client.health_check()
+            self.assertTrue(ok)
+            self.assertEqual(msg, "OK")
+
+    def test_health_check_model_not_found(self):
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"models": [{"name": "other-model"}]}
+        mock_resp.raise_for_status = MagicMock()
+        with (
+            patch("shadow_code.ollama_client.MODEL_NAME", "missing-model:latest"),
+            patch("shadow_code.ollama_client.requests.get", return_value=mock_resp),
+        ):
+            ok, msg = client.health_check()
+            self.assertFalse(ok)
+            self.assertIn("not found", msg)
+
+    def test_health_check_base_name_match(self):
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"models": [{"name": "shadow-gemma:v2"}]}
+        mock_resp.raise_for_status = MagicMock()
+        with (
+            patch("shadow_code.ollama_client.MODEL_NAME", "shadow-gemma:latest"),
+            patch("shadow_code.ollama_client.requests.get", return_value=mock_resp),
+        ):
+            ok, msg = client.health_check()
+            self.assertTrue(ok)
+
+    def test_chat_stream_mock(self):
+        import json
+
+        from shadow_code.ollama_client import OllamaClient
+
+        client = OllamaClient()
+        mock_resp = MagicMock()
+        lines = [
+            json.dumps({"message": {"content": "Hello"}, "done": False}).encode(),
+            json.dumps({"message": {"content": " world"}, "done": False}).encode(),
+            json.dumps(
+                {
+                    "message": {"content": ""},
+                    "done": True,
+                    "prompt_eval_count": 100,
+                    "eval_count": 50,
+                }
+            ).encode(),
+        ]
+        mock_resp.iter_lines.return_value = lines
+        mock_resp.raise_for_status = MagicMock()
+        with patch("shadow_code.ollama_client.requests.post", return_value=mock_resp):
+            chunks = list(client.chat_stream([], "system"))
+            self.assertEqual(chunks, ["Hello", " world"])
+            self.assertEqual(client.last_prompt_tokens, 100)
+            self.assertEqual(client.last_eval_tokens, 50)
+
+
+class TestReplCreateSession(unittest.TestCase):
+    """Test create_prompt_session."""
+
+    def test_returns_none_without_prompt_toolkit(self):
+        from shadow_code.repl import create_prompt_session
+
+        with patch("shadow_code.repl._HAS_PROMPT_TOOLKIT", False):
+            result = create_prompt_session()
+            self.assertIsNone(result)
+
+
+if __name__ == "__main__":
+    unittest.main()

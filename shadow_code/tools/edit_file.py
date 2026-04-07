@@ -1,4 +1,5 @@
 import os
+
 from .base import BaseTool, ToolResult
 
 
@@ -45,10 +46,10 @@ class EditFileTool(BaseTool):
 
         # Read current content
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
         except UnicodeDecodeError:
-            with open(path, "r", encoding="latin-1") as f:
+            with open(path, encoding="latin-1") as f:
                 content = f.read()
         except PermissionError:
             return ToolResult(False, f"Permission denied: {path}")

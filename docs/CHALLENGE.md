@@ -124,7 +124,7 @@ total 48...
 2. მოდელმა პასუხი გასცეს tool result-ს, არა ორიგინალ შეკითხვას
 3. მრავალჯერადი tool call-ის შემდეგ, მოდელი "დაივიწყოს" ორიგინალი მოთხოვნა
 
-**LLM Engineer:** ეს არის ცნობილი პრობლემა prompt-based tool calling-ში. გადაწყვეტა: 
+**LLM Engineer:** ეს არის ცნობილი პრობლემა prompt-based tool calling-ში. გადაწყვეტა:
 - tool result-ს წინ დაუმატო კონტექსტის მინიშნება
 - ან: გამოიყენო Ollama-ს system message mid-conversation
 

@@ -1,5 +1,5 @@
-from .base import BaseTool, ToolResult
 from ..config import TOOL_OUTPUT_MAX_CHARS
+from .base import BaseTool, ToolResult
 
 _REGISTRY: dict[str, BaseTool] = {}
 

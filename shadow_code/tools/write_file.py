@@ -1,4 +1,5 @@
 import os
+
 from .base import BaseTool, ToolResult
 
 
@@ -32,7 +33,7 @@ class WriteFileTool(BaseTool):
                 return ToolResult(
                     False,
                     f"File has not been read yet: {path}\n"
-                    "You must use read_file before overwriting an existing file."
+                    "You must use read_file before overwriting an existing file.",
                 )
             try:
                 old_size = os.path.getsize(path)

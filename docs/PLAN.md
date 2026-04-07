@@ -422,7 +422,7 @@ TOOL_CALL_PATTERN = re.compile(
 def parse_tool_calls(text: str) -> tuple[str, list[dict]]:
     """
     ტექსტიდან ამოიცნობს tool call-ებს.
-    
+
     Returns:
         (clean_text, tool_calls)
         - clean_text: ტექსტი tool_call ბლოკების გარეშე
@@ -469,7 +469,7 @@ class Conversation:
         self.messages: list[dict] = []
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
-    
+
     def add_user_message(self, content: str): ...
     def add_assistant_message(self, content: str): ...
     def add_tool_result(self, tool_name: str, result: str, success: bool): ...
@@ -502,23 +502,23 @@ from typing import Any
 class ToolResult:
     success: bool
     output: str
-    
+
 class BaseTool(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
-    
+
     @property
     @abstractmethod
     def description(self) -> str: ...
-    
+
     @property
     @abstractmethod
     def parameters(self) -> dict: ...
-    
+
     @abstractmethod
     def execute(self, params: dict) -> ToolResult: ...
-    
+
     def validate_params(self, params: dict) -> str | None:
         """Returns error message if params are invalid, None if OK."""
         ...
@@ -575,7 +575,7 @@ import shlex
 def execute(self, params: dict) -> ToolResult:
     command = params["command"]
     timeout = min(params.get("timeout", BASH_DEFAULT_TIMEOUT), BASH_MAX_TIMEOUT)
-    
+
     try:
         result = subprocess.run(
             command,
@@ -616,7 +616,7 @@ Working directory: /home/n00b/makho/shadow-code
 
 shadow> list files in current directory
 
-[thinking...] 
+[thinking...]
 
 ვნახოთ რა ფაილები გვაქვს ამ დირექტორიაში.
 
@@ -629,14 +629,14 @@ drwxr-xr-x 5 n00b n00b 4096 Apr  5 10:00 .
 აქ გვაქვს შემდეგი ფაილები:
 ...
 
-shadow> 
+shadow>
 ```
 
 **REPL ციკლი:**
 ```python
 while True:
     user_input = input("shadow> ").strip()
-    
+
     if user_input in ("/exit", "/quit"):
         break
     if user_input == "/clear":
@@ -647,9 +647,9 @@ while True:
         continue
     if not user_input:
         continue
-    
+
     conversation.add_user_message(user_input)
-    
+
     # Tool execution loop
     tool_turn_count = 0
     while tool_turn_count < MAX_TOOL_TURNS:
@@ -662,14 +662,14 @@ while True:
             print(chunk, end="", flush=True)
             full_response += chunk
         print()  # newline
-        
+
         # Parse tool calls
         clean_text, tool_calls = parser.parse_tool_calls(full_response)
         conversation.add_assistant_message(full_response)
-        
+
         if not tool_calls:
             break  # No more tools to call
-        
+
         # Execute tools
         tool_results = []
         for tc in tool_calls:
@@ -679,15 +679,15 @@ while True:
             print(f"  [tool: {tc['tool']}] {describe_tool_call(tc)}")
             if result.output:
                 print(f"  {truncate_for_display(result.output)}")
-        
+
         # Add all tool results as one user message
         combined_results = "\n\n".join(tool_results)
         conversation.add_tool_result_message(combined_results)
         tool_turn_count += 1
-    
+
     if tool_turn_count >= MAX_TOOL_TURNS:
         print("[System: Maximum tool call limit reached]")
-    
+
     conversation.truncate_if_needed()
 ```
 
@@ -714,7 +714,7 @@ while True:
 ```
      1	import os
      2	import sys
-     3	
+     3
      4	def main():
      5	    print("Hello")
 ```
@@ -906,8 +906,8 @@ prompt.py-ში ჩასმული prompt შედგება ამ ს�
 You are Shadow, a local AI coding assistant powered by shadow-gemma.
 You help users with software engineering tasks using the tools available to you.
 
-IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, 
-and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass 
+IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges,
+and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass
 targeting, supply chain compromise, or detection evasion for malicious purposes.
 ```
 
