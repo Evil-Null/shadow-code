@@ -20,7 +20,7 @@ BLOCKED_PATHS = {
 }
 # num_predict: max output tokens per response. Default ~2048 is too low for code generation.
 # Set high so the model can write complete files without truncation.
-MAX_OUTPUT_TOKENS = int(os.environ.get("SHADOW_MAX_TOKENS", "8192"))
+MAX_OUTPUT_TOKENS = int(os.environ.get("SHADOW_MAX_TOKENS", "16384"))
 
 MODEL_OPTIONS = {
     "temperature": 0.3,
@@ -29,7 +29,7 @@ MODEL_OPTIONS = {
     "top_k": 40,
     "top_p": 0.9,
     "min_p": 0.05,  # Cut tokens with <5% probability -- improves code quality
-    "repeat_penalty": 1.1,
+    "repeat_penalty": 1.05,
     "penalize_newline": False,  # CRITICAL for code -- don't penalize line breaks
 }
 

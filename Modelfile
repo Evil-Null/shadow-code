@@ -15,17 +15,17 @@ FROM gemma3:27b
 # top_k 40: focused token selection
 # top_p 0.9: nucleus sampling -- cuts off unlikely tokens
 # min_p 0.05: drop tokens below 5% probability -- sharpens code quality
-# repeat_penalty 1.1: prevents repetitive loops in long outputs
+# repeat_penalty 1.05: mild penalty -- code legitimately repeats patterns
 # penalize_newline false: CRITICAL -- code needs line breaks freely
-# num_predict 8192: long code output (default 2048 is too short)
+# num_predict 16384: large code output (400+ line files without truncation)
 # num_ctx 131072: full 128K context window
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
 PARAMETER top_p 0.9
 PARAMETER min_p 0.05
-PARAMETER repeat_penalty 1.1
+PARAMETER repeat_penalty 1.05
 PARAMETER penalize_newline false
-PARAMETER num_predict 8192
+PARAMETER num_predict 16384
 PARAMETER num_ctx 131072
 PARAMETER stop <end_of_turn>
