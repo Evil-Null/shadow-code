@@ -24,4 +24,4 @@ PARAMETER top_p 0.9
 PARAMETER min_p 0.05
 PARAMETER repeat_penalty 1.05
 PARAMETER num_predict 16384
-PARAMETER num_ctx 131072
+PARAMETER num_ctx 32768
