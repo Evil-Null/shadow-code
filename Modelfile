@@ -16,7 +16,7 @@ FROM gemma4:31b
 # min_p 0.05: drop low-probability tokens
 # repeat_penalty 1.05: mild penalty for code repetition
 # num_predict 16384: large output (400+ line files)
-# num_ctx 262144: full 256K context window (Gemma 4 supports 256K!)
+# num_ctx 262144: full 256K context. Needs ~43GB total (GPU+RAM offload).
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
