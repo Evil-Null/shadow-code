@@ -30,8 +30,8 @@ MODEL_OPTIONS = {
     "top_p": 0.9,
     "min_p": 0.05,  # Cut tokens with <5% probability -- improves code quality
     "repeat_penalty": 1.05,
-    "penalize_newline": False,  # CRITICAL for code -- don't penalize line breaks
 }
+# Note: penalize_newline removed -- deprecated in Ollama 0.20+, default is already False
 
 # --- Model Routing ---
 # Override via SHADOW_MODEL env var or use these as guidance for model selection.

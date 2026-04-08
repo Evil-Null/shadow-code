@@ -68,11 +68,12 @@ class Conversation:
         return bool(self.total_prompt_tokens > int(CONTEXT_WINDOW * EMERGENCY_TRUNCATE_RATIO))
 
     def clear_old_tool_results(self):
-        """Tier 1: Replace old tool results with stubs. Fast, no API call."""
+        """Tier 1: Replace old tool results with stubs. Handles both native and markdown."""
         indices = [
             i
             for i, m in enumerate(self.messages)
-            if m["role"] == "user" and "<tool_result" in m["content"]
+            if (m["role"] == "user" and "<tool_result" in m.get("content", ""))
+            or m["role"] == "tool"  # Native tool results
         ]
         for i in indices[:-KEEP_RECENT_RESULTS]:
             self.messages[i] = {"role": "user", "content": CLEARED_STUB}

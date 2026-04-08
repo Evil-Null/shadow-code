@@ -1,15 +1,9 @@
-# shadow_code/display.py -- Streaming buffer that hides tool call JSON from the user
+# shadow_code/display.py -- Streaming buffer for terminal output
 #
-# The model outputs tool calls as ```tool_call ... ``` markdown blocks.
-# This display buffer intercepts streaming chunks and:
-#   - Shows normal text immediately
-#   - Hides ```tool_call JSON blocks from the user
-#   - Collects the full response for parser.py to process after streaming ends
-#
-# IMPORTANT: ```tool_call detection is trickier than XML tags because ``` appears
-# in normal code blocks too. Strategy: only buffer/hide when we see the exact
-# sequence ```tool_call (backticks followed by "tool_call"). Normal code blocks
-# like ```python or ```json are passed through to the user.
+# With native tool calling (Gemma 4+), tool calls come via API metadata,
+# not in the text stream. This module still handles text buffering and
+# full response collection. Legacy ```tool_call hiding is kept for
+# backward compatibility with models that don't support native tools.
 
 import sys
 

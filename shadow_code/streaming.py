@@ -84,6 +84,8 @@ class StreamController:
             tokens = self.client.last_eval_tokens
             self.console.print(self.ui.render_response(accumulated_visible, tokens))
 
+        # If no visible text but native tool calls exist, return empty string
+        # (main.py will handle the tool calls via client.last_tool_calls)
         return self.display.get_full_response(), self.client.last_eval_tokens
 
     def _stream_plain(self, messages: list[dict], system: str) -> tuple[str, int]:
