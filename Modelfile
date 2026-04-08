@@ -16,7 +16,7 @@ FROM gemma4:31b
 # min_p 0.05: drop low-probability tokens
 # repeat_penalty 1.05: mild penalty for code repetition
 # num_predict 16384: large output (400+ line files)
-# num_ctx 262144: full 256K context. Needs ~43GB total (GPU+RAM offload).
+# num_ctx 131072: 128K context (RTX 3090 safe). Set SHADOW_CTX=262144 for 48GB+ systems.
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
@@ -24,4 +24,4 @@ PARAMETER top_p 0.9
 PARAMETER min_p 0.05
 PARAMETER repeat_penalty 1.05
 PARAMETER num_predict 16384
-PARAMETER num_ctx 262144
+PARAMETER num_ctx 131072
