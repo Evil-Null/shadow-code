@@ -42,20 +42,20 @@ COMPACTION_MODEL = os.environ.get("SHADOW_COMPACTION_MODEL", MODEL_NAME)
 #
 #   Task Type              Recommended Model         Why
 #   --------------------   -----------------------   ----------------------------
-#   Simple file ops        gemma3:4b, qwen3:4b       Fast, low memory, sufficient
+#   Simple file ops        gemma4:2b, qwen3:4b       Fast, low memory, sufficient
 #     (read, ls, grep)                                for tool dispatch
 #
-#   Standard coding        gemma3:27b, qwen3:14b     Good balance of speed and
+#   Standard coding        gemma4:31b, qwen3:14b     Good balance of speed and
 #     (edit, debug, test)                             reasoning for most tasks
 #
-#   Complex reasoning      gemma3:27b, qwen3:32b     Multi-file refactoring,
+#   Complex reasoning      gemma4:31b, qwen3:32b     Multi-file refactoring,
 #     (architecture,       deepseek-r1:32b            architectural decisions,
 #      multi-step plans)                              long context synthesis
 #
-#   Compaction/summary     gemma3:4b, qwen3:4b       Only needs to summarize,
+#   Compaction/summary     gemma4:2b, qwen3:4b       Only needs to summarize,
 #                                                     not reason deeply
 #
 # Usage:
-#   SHADOW_MODEL=gemma3:4b shadow-code           # lightweight mode
+#   SHADOW_MODEL=gemma4:2b shadow-code           # lightweight mode
 #   SHADOW_MODEL=deepseek-r1:32b shadow-code     # deep reasoning mode
-#   SHADOW_COMPACTION_MODEL=gemma3:4b shadow-code # fast compaction
+#   SHADOW_COMPACTION_MODEL=gemma4:2b shadow-code # fast compaction

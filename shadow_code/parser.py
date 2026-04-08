@@ -17,8 +17,8 @@ class ToolCall:
 
 
 # Phase 0 validated format: ```tool_call\n{JSON}\n```
-# The model (Gemma 3, 27B) naturally produces this format even when
-# instructed to use XML tags -- it's the training-data-preferred format.
+# Gemma 3/4 naturally produce this format. Gemma 4 also supports native
+# tool calling via Ollama API, but markdown format is proven and stable.
 TOOL_CALL_RE = re.compile(r"```tool_call\s*\n(.*?)\n```", re.DOTALL)
 
 

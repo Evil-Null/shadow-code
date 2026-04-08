@@ -5,7 +5,7 @@
 # This ensures byte-identical system prompt across requests -> Ollama KV cache hit.
 # Dynamic info (CWD, date, shell) is injected as the first user message (see main.py).
 #
-# STRUCTURE: Optimized for Gemma 3 primacy/recency attention bias:
+# STRUCTURE: Optimized for primacy/recency attention bias (Gemma 3/4 compatible):
 #   Position 1 (PRIMACY): Identity + Tool format + JSON schema
 #   Position 2: Tool catalog with examples
 #   Position 3: Task rules + Safety (mid-prompt, lower attention)

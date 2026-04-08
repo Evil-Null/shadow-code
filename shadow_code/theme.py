@@ -1,7 +1,8 @@
 """Theme system for shadow-code CLI.
 
 Centralized color palette and unicode symbols with terminal compatibility.
-Designed for Gemma 3's coding assistant UI -- Claude Code inspired aesthetics.
+Centralized color palette and unicode symbols for shadow-code CLI.
+Works with any local model (tested with Gemma 3/4).
 """
 
 import os
