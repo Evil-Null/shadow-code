@@ -2,7 +2,7 @@ import os
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = os.environ.get("SHADOW_MODEL", "shadow-gemma:latest")
-CONTEXT_WINDOW = 131_072
+CONTEXT_WINDOW = 262_144  # Gemma 4 supports 256K context
 MAX_TOOL_TURNS = 20
 MAX_CONSECUTIVE_ERRORS = 5
 TOOL_OUTPUT_MAX_CHARS = 30_000

@@ -1,31 +1,27 @@
 # Shadow-Gemma Modelfile for shadow-code
-# Optimized for code generation with tool calling
+# Optimized for code generation with Gemma 4 31B
 #
 # Build: ollama create shadow-gemma -f Modelfile
-# Run:   shadow-code  (or SHADOW_MODEL=shadow-gemma:latest shadow-code)
+# Run:   shadow-code
 
-FROM gemma3:27b
+FROM gemma4:31b
 
 # No SYSTEM here -- shadow-code injects its own system prompt via API.
-# Having a Modelfile SYSTEM creates conflicts and confuses the model.
 
 # --- Generation Parameters ---
 #
 # temperature 0.3: deterministic, consistent code output
 # top_k 40: focused token selection
-# top_p 0.9: nucleus sampling -- cuts off unlikely tokens
-# min_p 0.05: drop tokens below 5% probability -- sharpens code quality
-# repeat_penalty 1.05: mild penalty -- code legitimately repeats patterns
-# penalize_newline false: CRITICAL -- code needs line breaks freely
-# num_predict 16384: large code output (400+ line files without truncation)
-# num_ctx 131072: full 128K context window
+# top_p 0.9: nucleus sampling
+# min_p 0.05: drop low-probability tokens
+# repeat_penalty 1.05: mild penalty for code repetition
+# num_predict 16384: large output (400+ line files)
+# num_ctx 262144: full 256K context window (Gemma 4 supports 256K!)
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
 PARAMETER top_p 0.9
 PARAMETER min_p 0.05
 PARAMETER repeat_penalty 1.05
-PARAMETER penalize_newline false
 PARAMETER num_predict 16384
-PARAMETER num_ctx 131072
-PARAMETER stop <end_of_turn>
+PARAMETER num_ctx 262144
