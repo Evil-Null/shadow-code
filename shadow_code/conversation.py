@@ -31,12 +31,27 @@ class Conversation:
         self.messages.append({"role": "assistant", "content": content})
 
     def add_tool_results(self, results_text: str):
+        """Legacy: add tool results as user message (markdown format)."""
         prefixed = (
             "[Tool results below. Use these results to continue. "
             "Write COMPLETE code -- never abbreviate with '...' or placeholders.]\n\n"
             + results_text
         )
         self.messages.append({"role": "user", "content": prefixed})
+
+    def add_assistant_tool_call(self, tool_calls: list[dict]):
+        """Add assistant message with native tool calls."""
+        self.messages.append(
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": tool_calls,
+            }
+        )
+
+    def add_native_tool_result(self, tool_name: str, output: str):
+        """Add native tool result (role=tool)."""
+        self.messages.append({"role": "tool", "content": output, "name": tool_name})
 
     def update_tokens(self, prompt_tokens: int):
         self.total_prompt_tokens = prompt_tokens

@@ -1,8 +1,7 @@
-# shadow_code/ollama_client.py -- Streaming Ollama API client with token tracking
+# shadow_code/ollama_client.py -- Ollama API client with native tool support
 #
-# Provides health_check() and chat_stream() for the main REPL loop.
-# Tracks prompt_eval_count and eval_count from the final streaming message
-# so conversation.py can manage context window usage.
+# Supports both streaming text and native tool calling (Gemma 4+).
+# Tracks prompt_eval_count and eval_count for context management.
 
 import json
 
@@ -10,25 +9,198 @@ import requests
 
 from .config import MODEL_NAME, MODEL_OPTIONS, OLLAMA_BASE_URL
 
+# Tool schemas for Ollama native tool calling API
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "description": "Execute a shell command and return stdout/stderr",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Shell command to execute"},
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds (default 120)",
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a file with line numbers. Use absolute paths.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to file"},
+                    "offset": {"type": "integer", "description": "Starting line (1-based)"},
+                    "limit": {"type": "integer", "description": "Max lines to read"},
+                },
+                "required": ["file_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Replace exact text in a file. Must read_file first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path"},
+                    "old_string": {"type": "string", "description": "Exact text to find"},
+                    "new_string": {"type": "string", "description": "Replacement text"},
+                    "replace_all": {"type": "boolean", "description": "Replace all occurrences"},
+                },
+                "required": ["file_path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Create or overwrite a file. Must read_file first for existing files.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path"},
+                    "content": {"type": "string", "description": "File content to write"},
+                    "append": {"type": "boolean", "description": "Append mode for large files"},
+                },
+                "required": ["file_path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob",
+            "description": "Find files by glob pattern",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Glob pattern like **/*.py"},
+                    "path": {"type": "string", "description": "Directory to search in"},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "grep",
+            "description": "Search file contents with regex",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Regex pattern"},
+                    "path": {"type": "string", "description": "File or directory to search"},
+                    "include": {"type": "string", "description": "File filter like *.py"},
+                    "case_insensitive": {"type": "boolean"},
+                    "max_results": {"type": "integer"},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_dir",
+            "description": "List directory contents with sizes",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Directory path"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "multi_read",
+            "description": "Read up to 10 files in one call for project orientation",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of absolute file paths",
+                    },
+                    "limit": {"type": "integer", "description": "Lines per file"},
+                },
+                "required": ["paths"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_summary",
+            "description": "Detect project language, framework, and structure",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Project root directory"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_backup",
+            "description": "Backup a file before risky edits",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to backup"},
+                },
+                "required": ["file_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "file_restore",
+            "description": "Restore a file from backup",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to restore"},
+                },
+                "required": ["file_path"],
+            },
+        },
+    },
+]
+
 
 class OllamaClient:
-    """Client for the Ollama /api/chat streaming endpoint."""
+    """Client for Ollama /api/chat with native tool calling support."""
 
     def __init__(self):
         self.last_prompt_tokens: int = 0
         self.last_eval_tokens: int = 0
 
     def health_check(self) -> tuple[bool, str]:
-        """Verify Ollama is running and the configured model is available.
-
-        Returns (ok, message) tuple.
-        """
+        """Verify Ollama is running and model is available."""
         try:
             resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
             resp.raise_for_status()
             models = [m["name"] for m in resp.json().get("models", [])]
             if MODEL_NAME not in models:
-                # Also check without tag -- "shadow-gemma:latest" may appear as "shadow-gemma"
                 base_name = MODEL_NAME.split(":")[0]
                 found = [m for m in models if m.startswith(base_name)]
                 if not found:
@@ -40,24 +212,21 @@ class OllamaClient:
             return False, f"Ollama error: {e}"
 
     def chat_stream(self, messages: list[dict], system: str, model: str | None = None):
-        """Stream a chat completion from Ollama.
-
-        Args:
-            messages: Conversation history (list of {"role": ..., "content": ...}).
-            system: The system prompt (static string for KV cache).
-            model: Optional model override. Defaults to MODEL_NAME from config.
+        """Stream a chat completion with native tool support.
 
         Yields:
-            str: Content chunks as they arrive.
+            str: Text content chunks.
 
-        After iteration completes, last_prompt_tokens and last_eval_tokens
-        are updated from the final response's statistics.
+        After iteration, check self.last_tool_calls for any tool calls.
         """
+        self.last_tool_calls: list[dict] = []
+
         payload = {
             "model": model or MODEL_NAME,
             "messages": [{"role": "system", "content": system}] + messages,
             "stream": True,
             "options": MODEL_OPTIONS,
+            "tools": TOOL_SCHEMAS,
         }
         resp = requests.post(
             f"{OLLAMA_BASE_URL}/api/chat",
@@ -75,10 +244,20 @@ class OllamaClient:
             except json.JSONDecodeError:
                 continue
 
+            # Text content
             content = data.get("message", {}).get("content", "")
             if content:
                 yield content
 
+            # Native tool calls
+            tool_calls = data.get("message", {}).get("tool_calls", [])
+            if tool_calls:
+                self.last_tool_calls.extend(tool_calls)
+
             if data.get("done"):
                 self.last_prompt_tokens = data.get("prompt_eval_count", 0)
                 self.last_eval_tokens = data.get("eval_count", 0)
+
+    def format_tool_result_message(self, tool_name: str, output: str) -> dict:
+        """Format a tool result as an Ollama tool message."""
+        return {"role": "tool", "content": output, "name": tool_name}

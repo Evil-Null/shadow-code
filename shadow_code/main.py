@@ -368,7 +368,7 @@ def main():
         if db:
             db.add_message(session_id, "user", user_input)
 
-        # === Tool execution loop ===
+        # === Tool execution loop (native tool calling) ===
         turns = 0
         errors = 0
 
@@ -410,55 +410,29 @@ def main():
                     print("[Interrupted]")
                     break
 
-            if not resp or not resp.strip():
-                break
-
-            conv.add_assistant(resp)
             conv.update_tokens(client.last_prompt_tokens)
             state.tokens_used = conv.total_prompt_tokens
             state.turn = turns
 
-            # Save assistant response to DB
-            if db:
-                db.add_message(session_id, "assistant", resp)
-                db.update_session_tokens(session_id, conv.total_prompt_tokens)
+            # Check for native tool calls first
+            native_calls = getattr(client, "last_tool_calls", [])
 
-            # Parse tool calls
-            _, calls = parse_tool_calls(resp)
-            if not calls:
-                break
+            if native_calls:
+                # Native tool calling path (Gemma 4+)
+                conv.add_assistant_tool_call(native_calls)
 
-            # Execute tools
-            results = []
-            for tc in calls:
-                if tc.tool == "__invalid__":
-                    r = tool_reg.ToolResult(False, tc.params.get("error", "Invalid"))
-                    if _RICH:
-                        console.print(ui.render_error(r.output))
-                    else:
-                        print(f"  [error] {r.output}")
-                else:
-                    # Build descriptive tool call summary
-                    if tc.tool == "bash":
-                        desc = tc.params.get("command", "")[:100]
-                    elif tc.tool in ("read_file", "write_file", "edit_file"):
-                        desc = tc.params.get("file_path", "")
-                        if tc.tool == "edit_file":
-                            old = tc.params.get("old_string", "")[:40]
-                            new = tc.params.get("new_string", "")[:40]
-                            desc += f'  "{old}" -> "{new}"'
-                        elif tc.tool == "write_file":
-                            desc += f"  ({len(tc.params.get('content', ''))} chars)"
-                    elif tc.tool == "grep":
-                        desc = f'"{tc.params.get("pattern", "")}" in {tc.params.get("path", ".")}'
-                    elif tc.tool == "glob":
-                        desc = f"{tc.params.get('pattern', '')} in {tc.params.get('path', '.')}"
-                    else:
-                        desc = str(tc.params)[:80]
+                if db:
+                    db.add_message(session_id, "assistant", f"[tool calls: {len(native_calls)}]")
 
-                    # Safety check for bash commands
-                    if tc.tool == "bash":
-                        warning = check_destructive(tc.params.get("command", ""))
+                for tc in native_calls:
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "")
+                    params = func.get("arguments", {})
+                    desc = _build_tool_desc(tool_name, params)
+
+                    # Safety check
+                    if tool_name == "bash":
+                        warning = check_destructive(params.get("command", ""))
                         if warning:
                             if _RICH:
                                 console.print(ui.render_error(warning))
@@ -469,67 +443,95 @@ def main():
                             except (EOFError, KeyboardInterrupt):
                                 confirm = "n"
                             if confirm != "y":
-                                r = tool_reg.ToolResult(False, "Command cancelled by user")
-                                results.append(tool_reg.format_result(tc.tool, r))
+                                conv.add_native_tool_result(tool_name, "Command cancelled by user")
+                                errors += 1
                                 continue
 
                     if _RICH:
-                        console.print(ui.render_tool_call(tc.tool, desc))
+                        console.print(ui.render_tool_call(tool_name, desc))
 
-                    r = tool_reg.dispatch(tc.tool, tc.params)
+                    r = tool_reg.dispatch(tool_name, params)
 
                     if _RICH:
-                        # Show diff view for edit_file
-                        if tc.tool == "edit_file" and r.success:
+                        if tool_name == "edit_file" and r.success:
                             console.print(
                                 ui.render_diff(
-                                    tc.params.get("old_string", ""),
-                                    tc.params.get("new_string", ""),
-                                    tc.params.get("file_path", ""),
+                                    params.get("old_string", ""),
+                                    params.get("new_string", ""),
+                                    params.get("file_path", ""),
                                 )
                             )
                         else:
                             console.print(
                                 ui.render_tool_result(
-                                    tc.tool, r.output, r.success, params=tc.params
+                                    tool_name,
+                                    r.output,
+                                    r.success,
+                                    params=params,
                                 )
                             )
                     else:
-                        print(f"  [{tc.tool}] {desc}")
-                        # Show enough output for model to see full context
-                        max_lines = 80 if tc.tool in ("read_file", "bash", "grep") else 40
-                        max_chars = (
-                            8000 if tc.tool in ("read_file", "write_file", "edit_file") else 3000
-                        )
-                        preview = r.output[:max_chars]
-                        if len(r.output) > max_chars:
-                            preview += f"\n    ... [{len(r.output) - max_chars} more chars]"
-                        lines = preview.split("\n")[:max_lines]
-                        for line in lines:
+                        status = "\u2713" if r.success else "\u2717"
+                        print(f"  {status} [{tool_name}] {desc}")
+                        for line in r.output.splitlines()[:20]:
                             print(f"    {line}")
 
-                results.append(tool_reg.format_result(tc.tool, r))
-                errors = errors + 1 if not r.success else 0
+                    conv.add_native_tool_result(tool_name, r.output)
+                    errors = errors + 1 if not r.success else 0
 
-            # Progress-aware tool result injection
-            result_parts = []
-            result_parts.append(f"[Turn {turns + 1}/{MAX_TOOL_TURNS}]")
-            if errors >= 3:
-                result_parts.append(
-                    "[WARNING: Multiple errors. Before next action:\n"
-                    "1. What are you trying to do?\n"
-                    "2. Why did the last attempts fail?\n"
-                    "3. What different approach should you try?]"
-                )
-            result_parts.append("\n\n".join(results))
-            if turns >= MAX_TOOL_TURNS - 2:
-                result_parts.append("[Approaching turn limit. Finish current task and summarize.]")
-            conv.add_tool_results("\n\n".join(result_parts))
-            turns += 1
+                turns += 1
+                if errors >= MAX_CONSECUTIVE_ERRORS:
+                    print(f"[{errors} consecutive errors]")
+                    break
+                continue  # Loop back for model's next response
 
-            if errors >= MAX_CONSECUTIVE_ERRORS:
-                print(f"[{errors} consecutive errors]")
-                break
+            # No native tool calls -- check for text response
+            if resp and resp.strip():
+                conv.add_assistant(resp)
+                if db:
+                    db.add_message(session_id, "assistant", resp)
+                    db.update_session_tokens(session_id, conv.total_prompt_tokens)
+
+                # Fallback: check for markdown tool calls (backward compat)
+                _, markdown_calls = parse_tool_calls(resp)
+                if not markdown_calls:
+                    break  # Pure text response, done
+
+                # Execute markdown tool calls (legacy path)
+                results = []
+                for tc in markdown_calls:
+                    if tc.tool == "__invalid__":
+                        r = tool_reg.ToolResult(False, tc.params.get("error", "Invalid"))
+                    else:
+                        desc = _build_tool_desc(tc.tool, tc.params)
+                        if tc.tool == "bash":
+                            warning = check_destructive(tc.params.get("command", ""))
+                            if warning:
+                                print(f"  {warning}")
+                                try:
+                                    confirm = input("  Proceed? (y/n): ").strip().lower()
+                                except (EOFError, KeyboardInterrupt):
+                                    confirm = "n"
+                                if confirm != "y":
+                                    r = tool_reg.ToolResult(False, "Command cancelled")
+                                    results.append(tool_reg.format_result(tc.tool, r))
+                                    continue
+                        if _RICH:
+                            console.print(ui.render_tool_call(tc.tool, desc))
+                        r = tool_reg.dispatch(tc.tool, tc.params)
+                        if _RICH:
+                            console.print(ui.render_tool_result(tc.tool, r.output, r.success))
+                    results.append(tool_reg.format_result(tc.tool, r))
+                    errors = errors + 1 if not r.success else 0
+
+                conv.add_tool_results("\n\n".join(results))
+                turns += 1
+                if errors >= MAX_CONSECUTIVE_ERRORS:
+                    break
+                continue
+
+            # Empty response
+            break
 
         if turns >= MAX_TOOL_TURNS:
             print(f"[Tool limit ({MAX_TOOL_TURNS}) reached]")
@@ -568,6 +570,30 @@ def main():
     if db:
         db.close()
     print("Goodbye!")
+
+
+def _build_tool_desc(tool_name: str, params: dict) -> str:
+    """Build a human-readable description of a tool call."""
+    if tool_name == "bash":
+        return str(params.get("command", ""))[:100]
+    elif tool_name in ("read_file", "write_file", "edit_file"):
+        desc = str(params.get("file_path", ""))
+        if tool_name == "edit_file":
+            old = params.get("old_string", "")[:40]
+            new = params.get("new_string", "")[:40]
+            desc += f'  "{old}" -> "{new}"'
+        elif tool_name == "write_file":
+            desc += f"  ({len(params.get('content', ''))} chars)"
+        return desc
+    elif tool_name == "grep":
+        return f'"{params.get("pattern", "")}" in {params.get("path", ".")}'
+    elif tool_name == "glob":
+        return f"{params.get('pattern', '')} in {params.get('path', '.')}"
+    elif tool_name == "multi_read":
+        paths = params.get("paths", [])
+        return f"{len(paths)} files"
+    else:
+        return str(params)[:80]
 
 
 def _register_optional_tools(ctx):
