@@ -2,7 +2,7 @@ import os
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = os.environ.get("SHADOW_MODEL", "shadow-gemma:latest")
-CONTEXT_WINDOW = int(os.environ.get("SHADOW_CTX", "32768"))  # 32K (full GPU, fast)
+CONTEXT_WINDOW = int(os.environ.get("SHADOW_CTX", "65536"))  # 64K (full GPU, fast)
 MAX_TOOL_TURNS = 20
 MAX_CONSECUTIVE_ERRORS = 5
 TOOL_OUTPUT_MAX_CHARS = 30_000
@@ -20,7 +20,7 @@ BLOCKED_PATHS = {
 }
 # num_predict: max output tokens per response. Default ~2048 is too low for code generation.
 # Set high so the model can write complete files without truncation.
-MAX_OUTPUT_TOKENS = int(os.environ.get("SHADOW_MAX_TOKENS", "16384"))
+MAX_OUTPUT_TOKENS = int(os.environ.get("SHADOW_MAX_TOKENS", "8192"))
 
 MODEL_OPTIONS = {
     "temperature": 0.3,
