@@ -16,7 +16,7 @@ FROM gemma3:27b
 # min_p 0.05: drop low-probability tokens
 # repeat_penalty 1.05: mild penalty for code repetition
 # num_predict 16384: large output (400+ line files)
-# num_ctx 131072: full 128K context window (fits on RTX 3090 with CPU offload)
+# num_ctx 32768: 32K context (full GPU on RTX 3090, fast). 131K=slow CPU offload.
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
@@ -24,5 +24,5 @@ PARAMETER top_p 0.9
 PARAMETER min_p 0.05
 PARAMETER repeat_penalty 1.05
 PARAMETER num_predict 16384
-PARAMETER num_ctx 131072
+PARAMETER num_ctx 32768
 PARAMETER stop <end_of_turn>
