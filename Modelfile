@@ -1,10 +1,10 @@
 # Shadow-Gemma Modelfile for shadow-code
-# Optimized for code generation with Gemma 4 31B
+# Optimized for code generation with Gemma 3 27B
 #
 # Build: ollama create shadow-gemma -f Modelfile
 # Run:   shadow-code
 
-FROM gemma4:31b
+FROM gemma3:27b
 
 # No SYSTEM here -- shadow-code injects its own system prompt via API.
 
@@ -16,7 +16,7 @@ FROM gemma4:31b
 # min_p 0.05: drop low-probability tokens
 # repeat_penalty 1.05: mild penalty for code repetition
 # num_predict 16384: large output (400+ line files)
-# num_ctx 131072: 128K context (RTX 3090 safe). Set SHADOW_CTX=262144 for 48GB+ systems.
+# num_ctx 131072: full 128K context window (fits on RTX 3090 with CPU offload)
 
 PARAMETER temperature 0.3
 PARAMETER top_k 40
@@ -24,4 +24,5 @@ PARAMETER top_p 0.9
 PARAMETER min_p 0.05
 PARAMETER repeat_penalty 1.05
 PARAMETER num_predict 16384
-PARAMETER num_ctx 20480
+PARAMETER num_ctx 131072
+PARAMETER stop <end_of_turn>

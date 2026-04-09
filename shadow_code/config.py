@@ -2,7 +2,7 @@ import os
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 MODEL_NAME = os.environ.get("SHADOW_MODEL", "shadow-gemma:latest")
-CONTEXT_WINDOW = int(os.environ.get("SHADOW_CTX", "20480"))  # 20K (full GPU, fast)
+CONTEXT_WINDOW = int(os.environ.get("SHADOW_CTX", "131072"))  # 128K (Gemma 3 on RTX 3090)
 MAX_TOOL_TURNS = 20
 MAX_CONSECUTIVE_ERRORS = 5
 TOOL_OUTPUT_MAX_CHARS = 30_000

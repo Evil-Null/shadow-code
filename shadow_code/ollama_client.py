@@ -221,13 +221,18 @@ class OllamaClient:
         """
         self.last_tool_calls: list[dict] = []
 
-        payload = {
+        payload: dict = {
             "model": model or MODEL_NAME,
             "messages": [{"role": "system", "content": system}] + messages,
             "stream": True,
             "options": MODEL_OPTIONS,
-            "tools": TOOL_SCHEMAS,
         }
+        # Only add native tools if SHADOW_NATIVE_TOOLS=1 (Gemma 4+)
+        # Gemma 3 doesn't support native tools -- uses markdown ```tool_call format
+        import os
+
+        if os.environ.get("SHADOW_NATIVE_TOOLS") == "1":
+            payload["tools"] = TOOL_SCHEMAS
         resp = requests.post(
             f"{OLLAMA_BASE_URL}/api/chat",
             json=payload,

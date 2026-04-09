@@ -28,8 +28,8 @@ class TestSystemPrompt(unittest.TestCase):
     def test_has_common_mistakes(self):
         self.assertIn("Common Mistakes", SYSTEM_PROMPT)
 
-    def test_has_tool_usage_tips(self):
-        self.assertIn("Tool Usage Tips", SYSTEM_PROMPT)
+    def test_has_tool_calling_format(self):
+        self.assertIn("Tool Calling Format", SYSTEM_PROMPT)
 
     # --- Language rule ---
 
@@ -64,9 +64,9 @@ class TestSystemPrompt(unittest.TestCase):
 
     # --- Tool descriptions NOT in prompt (moved to native API) ---
 
-    def test_no_tool_call_format_in_prompt(self):
-        """Tool schemas are in ollama_client.py TOOL_SCHEMAS, not in prompt."""
-        self.assertNotIn("```tool_call", SYSTEM_PROMPT)
+    def test_has_tool_call_format_markdown(self):
+        """Gemma 3 uses markdown tool_call format in prompt."""
+        self.assertIn("```tool_call", SYSTEM_PROMPT)
 
     def test_tool_schemas_exist(self):
         """Verify TOOL_SCHEMAS is defined in ollama_client."""
