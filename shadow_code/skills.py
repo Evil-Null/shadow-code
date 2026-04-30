@@ -90,18 +90,25 @@ Efficiency:
 
 register_skill(
     "review",
-    "Review a specific file for bugs, quality, security",
-    """Review the specified file (or recently modified files if none specified).
+    "Code review (5-Eye protocol: arch, impl, security, qa, lead)",
+    """Review the specified file or recently changed code following the EAS 5-Eye protocol.
 
-1. Read the file completely with read_file
-2. Check for:
-   - Logic bugs and edge cases
-   - Security vulnerabilities (injection, path traversal, etc.)
-   - Error handling gaps
-   - Performance issues
-   - Code style and readability
-3. Report findings with file_path:line_number references
-4. Suggest fixes for each issue found""",
+1. Scope: run `git diff --name-only HEAD~1` and `git diff --stat` to identify changes.
+   Read each changed file completely with read_file.
+2. ARCHITECT eye — does the change fit the system? Module boundaries, blast radius,
+   any new circular deps?
+3. DEVELOPER eye — DRY/SOLID, function < 50 lines, file < 300 lines, no `any`, no
+   ts-ignore, no TODO/FIXME, complete error handling, types on signatures.
+4. SECURITY eye — every input validated, no eval/innerHTML, no secrets in code,
+   parameterized queries, path-traversal protection. Call get_language_rules with
+   name="common-security" if unsure.
+5. QA eye — edge cases (empty, max, special chars, null, concurrency), regression
+   risk, test coverage for the change.
+6. TECH LEAD eye — final ship/fix decision with trade-off summary.
+
+Report findings as `file:line — [eye] — issue → suggested fix`.
+Critical issues block; minor ones become follow-up notes.
+For language-specific rules call get_language_rules with the file extension first.""",
 )
 
 register_skill(
@@ -256,30 +263,36 @@ register_skill(
 
 register_skill(
     "test",
-    "Run tests and analyze results",
-    """Run the project's test suite and analyze results.
+    "Run tests and analyze results (testing pyramid: unit > integration > e2e)",
+    """Run the project's test suite and analyze results following the testing pyramid:
+unit (many, fast) > integration (moderate) > e2e (few, slow).
 
 1. Detect the test framework:
-   - Python: look for pytest.ini, setup.cfg, pyproject.toml [tool.pytest]
-   - JavaScript: look for jest.config, vitest.config, package.json scripts
-   - Go: go test ./...
-   - Rust: cargo test
-   - Or ask the user if unclear
+   - Python: pytest.ini / pyproject.toml [tool.pytest]
+   - JS/TS: jest.config / vitest.config / package.json scripts
+   - Go: `go test ./...`
+   - Rust: `cargo test`
+   - E2E specifically: playwright.config.ts → use /test --e2e flow
 
-2. Run the tests:
-   - Use the appropriate command (pytest, npm test, etc.)
-   - Capture full output including failures
+2. If user passes `--e2e`: focus on Playwright. Check for page objects in
+   tests/e2e/, run `npx playwright test`, capture trace/screenshot artifacts on
+   failure, identify flaky tests (look for `.only`, hardcoded waits, retries).
 
-3. Analyze results:
+3. Run tests:
+   - Use the appropriate command, capture full output
+   - For unit: high parallelism. For e2e: serial, with --reporter=list
+
+4. Analyze:
    - Count passed/failed/skipped
-   - For failures: show the error, identify the failing test, suggest fix
-   - For errors: distinguish between test bugs and code bugs
+   - For each failure: read the test file AND the code under test
+   - Distinguish test bugs from production bugs
+   - Check for missing edge cases (empty, max, special chars, null, concurrency)
 
-4. If tests fail:
-   - Read the failing test file
-   - Read the source code being tested
-   - Identify the root cause
-   - Fix and re-run""",
+5. Coverage check (if requested):
+   - pytest --cov / vitest --coverage / go test -cover
+   - Flag any function/branch < 80% coverage in changed files
+
+6. Fix and re-run. Don't claim success without seeing green output.""",
 )
 
 register_skill(
@@ -332,4 +345,74 @@ register_skill(
    - Explain how the pieces connect
 
 4. If searching for usage: trace the call chain from definition to all callers.""",
+)
+
+
+register_skill(
+    "audit",
+    "Security audit (STRIDE + automated scans + manual review)",
+    """Run a security audit on the codebase or a specific feature.
+
+Phase 1 — Automated scans (run via bash):
+- Dependencies: `npm audit --audit-level=moderate` / `pip-audit` / `cargo audit`
+- Secret scan: grep -rEn "(password|secret|token|api_key|apikey)\\s*[=:]\\s*['\"]" .
+- Private keys: grep -rn "-----BEGIN.*PRIVATE KEY-----" .
+- AWS keys: grep -rEn "AKIA[0-9A-Z]{16}" .
+- .env in .gitignore? `grep -q '.env' .gitignore`
+
+Phase 2 — STRIDE manual review for each component:
+- Spoofing: are identities verified? auth checks on every endpoint?
+- Tampering: integrity of inputs, signed tokens, constant-time comparisons?
+- Repudiation: audit logging on sensitive ops?
+- Information disclosure: error messages leak stack traces / internals?
+- Denial of service: rate limiting, input size caps, recursion depth?
+- Elevation of privilege: authorization checks AFTER auth, principle of least privilege?
+
+Phase 3 — Code-level checks (call get_language_rules name="common-security" first):
+- All inputs validated (whitelist, not blacklist)
+- No eval/exec/innerHTML/dangerouslySetInnerHTML
+- Parameterized queries (no string concat for SQL)
+- Path traversal protection on file ops
+- Crypto: no MD5/SHA1, no ECB mode, no hardcoded IVs
+
+Report each finding as: `severity (CRITICAL/HIGH/MEDIUM/LOW) | file:line | issue | fix`.""",
+)
+
+
+register_skill(
+    "migrate",
+    "Database migration (safe, reversible, zero-downtime)",
+    """Plan or implement a database migration safely.
+
+Core principles:
+1. Every change is a migration — never alter production manually
+2. Migrations are forward-only in production (rollback = new forward migration)
+3. Schema and data migrations are SEPARATE files
+4. Test against production-sized data, not toy datasets
+5. Migrations are immutable once deployed
+
+Pre-flight checklist:
+- [ ] UP and DOWN both written (or explicitly marked irreversible)
+- [ ] No full table locks on large tables (use CONCURRENT operations)
+- [ ] New columns are nullable OR have defaults (never NOT NULL without default)
+- [ ] Indexes created CONCURRENTLY (Postgres) — separate from CREATE TABLE
+- [ ] Backfill is a separate migration, batched (1k-10k rows per batch)
+- [ ] Rollback plan documented in the migration file header
+
+PostgreSQL safe patterns:
+- Add nullable column: `ALTER TABLE t ADD COLUMN c TEXT;` — instant
+- Add column with default (PG11+): `ALTER TABLE t ADD COLUMN c BOOL NOT NULL DEFAULT true;` — instant
+- Add NOT NULL to existing column: 1) add CHECK constraint NOT VALID, 2) backfill, 3) VALIDATE CONSTRAINT, 4) SET NOT NULL
+- Index: `CREATE INDEX CONCURRENTLY idx_t_c ON t(c);`
+
+ORM-specific notes (detect from project):
+- Prisma: `prisma migrate dev` (dev) / `prisma migrate deploy` (prod)
+- Drizzle: `drizzle-kit generate` then commit
+- Django: separate `migrations/0001_schema.py` and `migrations/0002_backfill.py`
+- golang-migrate: paired `.up.sql` / `.down.sql`
+
+After writing the migration:
+1. Run it against a local copy of prod-shaped data
+2. Time it; flag any DDL > 1s on a production-sized table
+3. Verify the DOWN migration also works""",
 )
