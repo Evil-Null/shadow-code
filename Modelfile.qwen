@@ -1,0 +1,35 @@
+# Modelfile.qwen — shadow-code optimized variant of qwen2.5-coder
+#
+# Build: ollama create shadow-qwen -f Modelfile.qwen
+# Run:   SHADOW_MODEL=shadow-qwen shadow-code
+#
+# Why a separate Modelfile?
+# - Base qwen2.5-coder ships with default num_ctx that may not match shadow-code workloads.
+# - Stop tokens MUST be ChatML (<|im_end|>), NOT Gemma's <end_of_turn>.
+# - Generation parameters tuned for code: lower temperature, repeat penalty.
+# - No SYSTEM here — shadow-code injects its own system prompt via API
+#   (preserves Ollama KV cache hits across requests).
+
+FROM qwen2.5-coder:latest
+
+# --- Generation Parameters ---
+#
+# temperature 0.2: deterministic, consistent code (was 0.3 for Gemma 27B;
+#                  smaller 7B model benefits from tighter sampling)
+# top_k 40:        focused token selection
+# top_p 0.9:       nucleus sampling
+# min_p 0.05:      drop low-probability tokens
+# repeat_penalty 1.05: mild penalty against code repetition loops
+# num_predict 8192:    large output (fits 200-line files comfortably)
+# num_ctx 32768:       qwen2.5-coder native max. 131K is Gemma-only.
+#                      32K = ~24K free for conversation after system prompt + tools.
+# stop <|im_end|>:     ChatML end-of-turn (qwen native; was <end_of_turn> for Gemma)
+
+PARAMETER temperature 0.2
+PARAMETER top_k 40
+PARAMETER top_p 0.9
+PARAMETER min_p 0.05
+PARAMETER repeat_penalty 1.05
+PARAMETER num_predict 8192
+PARAMETER num_ctx 32768
+PARAMETER stop <|im_end|>
