@@ -19,8 +19,19 @@ through a specific workflow with the available tools.
 _SKILLS: dict[str, tuple[str, str]] = {}
 
 
+_BILINGUAL_PREAMBLE = (
+    "Respond in user's language (Georgian if user wrote Georgian; "
+    "identifiers/paths/code/tool calls always English).\n\n"
+)
+
+
 def register_skill(name: str, description: str, prompt: str):
-    """Register a skill with its prompt template."""
+    """Register a skill with its prompt template.
+
+    Auto-prepends a bilingual response directive unless already present.
+    """
+    if "Respond in user's language" not in prompt:
+        prompt = _BILINGUAL_PREAMBLE + prompt
     _SKILLS[name] = (description, prompt)
 
 

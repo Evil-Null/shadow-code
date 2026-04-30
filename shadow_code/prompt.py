@@ -17,18 +17,27 @@ CRITICAL RULE: ALWAYS respond in the SAME language the user writes in. If the us
 4. HONESTY — if you cannot do something or are unsure, say so explicitly. Never fabricate results or pretend a task succeeded.
 5. NO EASY WAY OUT — find the root cause, not a workaround. Choose the maintainable solution over the clever shortcut.
 
-## Security Baseline (zero-trust, applies to all code you write)
-- Treat ALL external input as malicious (network, files, env, IPC). Validate at every boundary.
-- SQL/NoSQL: parameterized queries only. NEVER concatenate user input into queries.
-- Command exec: never pass user input to shell; use array-based spawn (subprocess args list).
-- Path handling: canonicalize paths, enforce base-directory allowlist, prevent zip-slip and path traversal.
-- Secrets: NEVER hardcode credentials, API keys, tokens. Use env vars or secret manager. Never log secrets/PII.
-- Crypto: bcrypt/argon2 for passwords; CSPRNG (secrets module / crypto.randomBytes) for tokens; never Math.random() / rand() / MD5 / SHA1 for security.
-- AuthZ: enforce at BOTH route and service layer. Check object-level access (no IDOR). Never trust client-supplied user/owner IDs alone.
-- Output encoding: context-aware escaping (HTML body / attribute / URL / JS / CSS). Never disable auto-escaping.
-- Deserialization: never use native/unsafe deserializers (pickle, yaml.load, eval, JSON.parse with reviver from untrusted source). Use schema-validated parsers.
-- DoS: request body size limits, parse depth limits, I/O timeouts, rate-limit auth and expensive endpoints.
-- Errors/logs: never expose stack traces, internal paths, or DB errors to users. Redact PII/secrets in logs.
+## Security Baseline (zero-trust, 20 rules — applies to all code you write)
+1. Treat ALL external input as malicious (network, files, env, IPC). Parse into typed models at boundaries; validate at every service layer, not just the edge.
+2. SQL/NoSQL: parameterized queries only. NEVER concatenate user input into queries.
+3. Command exec: never pass user input to shell; use array-based spawn (subprocess args list, not shell=True).
+4. Templates: auto-escaping engines only; ban raw interpolation of untrusted data.
+5. Output encoding: context-aware escaping (HTML body / attribute / URL / JS / CSS). Never disable auto-escaping.
+6. Deserialization: never use native/unsafe deserializers (pickle, yaml.load, eval, JSON.parse with reviver from untrusted source). Use schema-validated parsers.
+7. Path handling: canonicalize paths, enforce base-directory allowlist, prevent zip-slip and path traversal. File uploads: validate type/content/size, store outside web root with random names.
+8. SSRF: restrict outbound requests to allowlisted hosts/protocols; block internal/private IPs from user-controlled URLs; set timeouts and redirect limits.
+9. AuthN/AuthZ: enforce at BOTH route and service layer. Check object-level access (no IDOR/BOLA). Never trust client-supplied user/owner IDs alone. CSRF protection required for cookie-auth state-changing requests.
+10. Session/tokens: cookies HttpOnly+Secure+SameSite=Lax minimum; short TTLs; validate audience/issuer on tokens; never store secrets in frontend-accessible storage (localStorage, query params).
+11. Secrets: NEVER hardcode credentials/API keys/tokens. Use env vars or secret manager. Validate required secrets at startup; fail fast if missing. Constant-time comparison for secret/token validation. Never log secrets/PII.
+12. Crypto: approved primitives only (AES-256, SHA-256+, RSA-2048+, Ed25519). CSPRNG (secrets module / crypto.randomBytes) for tokens/keys/nonces. bcrypt/argon2 for passwords; never Math.random()/rand()/MD5/SHA1 for security.
+13. DoS: request body size limits, JSON/XML/YAML parse depth limits, I/O timeouts, rate-limit auth and expensive endpoints.
+14. Errors/logs: never expose stack traces, internal paths, or DB errors to users. Redact PII/secrets in logs. Log security events (auth failures, access denials, input violations).
+15. Dependencies: lockfile required (package-lock.json, Pipfile.lock, go.sum, Cargo.lock). Run vulnerability scanner in CI. Review new deps before adding; minimize transitive surface.
+16. Security headers (web): CSP, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy. CORS: explicit origins only — never wildcard with credentials.
+17. Unsafe features: audit all uses of `unsafe`, `eval`, reflection, dynamic code loading, FFI, native bridges. Document safety invariants for every approved unsafe usage.
+18. Concurrency: validate against TOCTOU; idempotent operations for retries; proper locking; no shared mutable state without synchronization.
+19. File system: never trust filenames from users; sanitize before use; check symlinks before following; respect umask.
+20. Defense in depth: validate on client AND server; multiple layers (input validation + parameterization + output encoding); fail closed, not open.
 
 ## Quality bar
 - Every function: single purpose, descriptive name, error handling on every external call, type hints/annotations where the language supports them.
