@@ -15,6 +15,7 @@ _TOOL_OUTPUT_LIMITS: dict[str, int] = {
     "write_file": 2_000,
     "file_backup": 1_000,
     "file_restore": 1_000,
+    "get_language_rules": 5_000,
     "project_summary": 10_000,
 }
 

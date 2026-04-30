@@ -609,6 +609,7 @@ def _register_optional_tools(ctx):
         ("shadow_code.tools.project_summary", "ProjectSummaryTool"),
         ("shadow_code.tools.file_backup", "FileBackupTool"),
         ("shadow_code.tools.file_backup", "FileRestoreTool"),
+        ("shadow_code.tools.get_language_rules", "GetLanguageRulesTool"),
     ]
     for mod_path, cls_name in optional:
         try:
