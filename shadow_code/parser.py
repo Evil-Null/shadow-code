@@ -33,6 +33,10 @@ ANY_FENCE_RE = re.compile(
 UNCLOSED_FENCE_RE = re.compile(
     r"```(?:bash|sh|json|python|tool_call)?\s*\n(\{[^`]*?\})\s*\Z", re.DOTALL
 )
+# Pass 4 fallback: raw shell commands in ```bash``` or ```sh``` blocks (no JSON).
+# 7B models often emit ```bash\nls -la\n``` directly instead of the canonical
+# tool_call format. Treat these as bash tool calls when no other tool was parsed.
+RAW_SHELL_FENCE_RE = re.compile(r"```(?:bash|sh)\s*\n(.*?)\n```", re.DOTALL)
 
 
 def _try_parse_tool_json(json_str: str) -> dict | None:
@@ -119,6 +123,28 @@ def parse_tool_calls(text: str) -> tuple[str, list[ToolCall]]:
                     ToolCall(tool=data["tool"], params=data["params"], raw=m.group(0))
                 )
                 consumed_spans.append(m.span())
+
+    # Pass 4: raw shell command in ```bash/```sh block (7B fallback).
+    # Only fires when no other tool call was parsed AND the body does NOT look
+    # like JSON (so we don't double-match Pass 2 candidates).
+    if not calls:
+        for m in RAW_SHELL_FENCE_RE.finditer(text):
+            if any(s <= m.start() < e for s, e in consumed_spans):
+                continue
+            body = m.group(1).strip()
+            if not body:
+                continue
+            # Skip JSON-shaped bodies (already handled by Pass 2 and rejected if invalid)
+            if body.startswith("{") and body.endswith("}"):
+                continue
+            calls.append(
+                ToolCall(
+                    tool="bash",
+                    params={"command": body},
+                    raw=m.group(0),
+                )
+            )
+            consumed_spans.append(m.span())
 
     # Strip consumed spans from text
     if consumed_spans:
