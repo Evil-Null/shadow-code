@@ -90,25 +90,49 @@ Efficiency:
 
 register_skill(
     "review",
-    "Code review (5-Eye protocol: arch, impl, security, qa, lead)",
-    """Review the specified file or recently changed code following the EAS 5-Eye protocol.
+    "Structured code review (4 sections: ARCHITECT/SECURITY/QA/LEAD + V1-V7)",
+    """Respond in user's language (Georgian if user wrote Georgian; identifiers/paths/code always English).
 
-1. Scope: run `git diff --name-only HEAD~1` and `git diff --stat` to identify changes.
-   Read each changed file completely with read_file.
-2. ARCHITECT eye — does the change fit the system? Module boundaries, blast radius,
-   any new circular deps?
-3. DEVELOPER eye — DRY/SOLID, function < 50 lines, file < 300 lines, no `any`, no
-   ts-ignore, no TODO/FIXME, complete error handling, types on signatures.
-4. SECURITY eye — every input validated, no eval/innerHTML, no secrets in code,
-   parameterized queries, path-traversal protection. Call get_language_rules with
-   name="common-security" if unsure.
-5. QA eye — edge cases (empty, max, special chars, null, concurrency), regression
-   risk, test coverage for the change.
-6. TECH LEAD eye — final ship/fix decision with trade-off summary.
+Review the specified file or recently changed code. Single-pass structured review.
 
-Report findings as `file:line — [eye] — issue → suggested fix`.
-Critical issues block; minor ones become follow-up notes.
-For language-specific rules call get_language_rules with the file extension first.""",
+STEP 1 — Scope:
+- Run `git diff --name-only HEAD~1` and `git diff --stat` to identify changes
+- Read each changed file completely with read_file
+- For language-specific rules call get_language_rules with the file extension
+- For security checklist call get_language_rules with name="common-security"
+
+STEP 2 — Output EXACTLY these 4 sections (markdown headers, in order):
+
+## ARCHITECT
+- Module boundaries, blast radius, design fit
+- Circular deps, layering violations
+- Does change fit existing patterns?
+
+## SECURITY
+- Input validation (every external input)
+- No eval/innerHTML/exec, no secrets in code
+- Parameterized queries, path-traversal protection
+- AuthN/AuthZ correctness on every endpoint
+- Apply common-security rules
+
+## QA
+- Edge cases: empty, max, special chars (Georgian!), null/undefined, concurrency
+- Regression risk: what existing behavior could break?
+- Test coverage gaps for this change
+
+## TECH LEAD VERDICT
+- Decision: SHIP / FIX / BLOCK + 1-2 sentence rationale
+- V1-V7 status checklist:
+  - V1 build/compile: ✅/❌/N/A
+  - V2 type safety (no any/ts-ignore): ✅/❌/N/A
+  - V3 security (no eval/innerHTML/secrets): ✅/❌/N/A
+  - V4 code quality (≤50 lines/fn, ≤300 lines/file, no TODO/FIXME): ✅/❌/N/A
+  - V5 spec compliance: ✅/❌/N/A
+  - V6 regression safety: ✅/❌/N/A
+  - V7 edge cases handled: ✅/❌/N/A
+
+Report individual findings inline: `file:line — issue → suggested fix`.
+Critical issues block; minor ones become follow-up notes.""",
 )
 
 register_skill(
@@ -415,4 +439,41 @@ After writing the migration:
 1. Run it against a local copy of prod-shaped data
 2. Time it; flag any DDL > 1s on a production-sized table
 3. Verify the DOWN migration also works""",
+)
+
+
+register_skill(
+    "plan",
+    "Produce a concrete implementation plan (no edits)",
+    """Respond in user's language (Georgian if user wrote Georgian; identifiers/paths/code always English).
+
+Produce a concrete implementation plan for the user's request. Plan ONLY — do NOT
+execute any edits, do NOT call write_file/edit_file/bash. Stop after the plan.
+
+Output schema (markdown, in order):
+
+## Goal
+One sentence: what the user wants accomplished.
+
+## Files affected
+- Absolute paths, one per line
+- Mark each as NEW / MODIFY / DELETE
+
+## Steps
+Numbered, ≤6 steps, each ≤2 sentences. Include the tool you'll use:
+1. [tool] Brief action description.
+2. ...
+
+## Risks
+- Top 2-3 risks with one-line mitigation each.
+
+## Verification (V1-V7)
+- V1 build: how will you confirm compile passes?
+- V2 types: type safety check
+- V3 security: any input validation / secret check needed?
+- V6 regression: which existing tests/flows must still pass?
+- V7 edges: empty/max/special chars/null cases to test
+
+If the request is ambiguous, ask 1-2 clarifying questions instead of guessing.
+Cap plan at 6 steps — if more are needed, the request needs to be split.""",
 )
