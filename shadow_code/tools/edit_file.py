@@ -1,6 +1,34 @@
 import os
 
+from ..rules_loader import rule_for_filename
 from .base import BaseTool, ToolResult
+
+
+def _is_nontrivial_edit(content: str) -> bool:
+    """True if the edit is substantive enough to warrant a language-rules nudge."""
+    if len(content) > 200:
+        return True
+    return any(kw in content for kw in ("def ", "function ", "class ", "fn ", "func "))
+
+
+def _rule_hint(ctx, path: str, content: str) -> str:
+    """Return a short hint pointing the model at language rules, or empty string.
+
+    Session-scoped dedup: each rule hinted at most once per ToolContext.
+    """
+    if not _is_nontrivial_edit(content):
+        return ""
+    rule_name = rule_for_filename(path)
+    if rule_name is None:
+        return ""
+    rules_loaded = getattr(ctx, "rules_loaded", None)
+    if rules_loaded is None or rule_name in rules_loaded:
+        return ""
+    rules_loaded.add(rule_name)
+    return (
+        f"\n\n[💡 Tip: for non-trivial {rule_name} edits, call get_language_rules "
+        f"with name='{rule_name}' if you have not already this session.]"
+    )
 
 
 class EditFileTool(BaseTool):
@@ -103,4 +131,5 @@ class EditFileTool(BaseTool):
             start_line = new_content[:start].count("\n") + 1
             numbered = [f"{start_line + i:6d}\t{ln}" for i, ln in enumerate(lines)]
             msg += "\n\nContext after edit:\n" + "\n".join(numbered[:15])
+        msg += _rule_hint(self.ctx, path, new_string)
         return ToolResult(True, msg)

@@ -488,3 +488,126 @@ Numbered, ≤6 steps, each ≤2 sentences. Include the tool you'll use:
 If the request is ambiguous, ask 1-2 clarifying questions instead of guessing.
 Cap plan at 6 steps — if more are needed, the request needs to be split.""",
 )
+
+
+register_skill(
+    "cross-validate",
+    "Adversarial self-review of a design or solution (2-pass structured)",
+    """Apply targeted adversarial validation. Output exactly two sections:
+
+## Pass 1 — Proposal
+Present your design/solution. Include:
+- The approach in 3-5 bullets
+- Key assumptions (numbered)
+- Files/modules affected
+
+## Pass 2 — Adversarial Self-Review
+Now switch hats. Attack your Pass 1 design:
+- List 3-5 concrete failure modes with EXAMPLES (not vague concerns):
+  * Edge case that breaks it
+  * Race / concurrency issue
+  * Security exploit angle
+  * Backwards-compat / regression risk
+  * Operational hazard (rollback, monitoring, etc.)
+- For each: severity (CRITICAL / HIGH / MED / LOW)
+- Then revise the proposal: list specific changes to address CRITICAL+HIGH only
+
+Use this skill on:
+- Auth, crypto, migrations, deletion logic
+- Anything affecting >3 files
+- Anything user flagged as risky
+Stop after Pass 2. Do NOT execute any edits.""",
+)
+
+
+register_skill(
+    "harden",
+    "Improve resilience: error handling, edge cases, i18n, overflow",
+    """Make the specified code production-resilient. Step through:
+
+1. READ — read the target file(s) completely.
+
+2. AUDIT for these failure classes (be specific to the language; call
+   get_language_rules with the file extension if needed):
+   - Inputs: empty string, max length, unicode (Georgian!), null/undefined, NaN, negative, zero
+   - I/O: file not found, permission denied, disk full, network timeout, partial reads
+   - Concurrency: race conditions, TOCTOU, double-execution, idempotency
+   - Resources: leak on error path, unbounded memory/CPU, missing cleanup in finally/defer
+   - i18n: hardcoded English strings in user-facing paths, locale-dependent date/number formatting
+   - Overflow: int/float bounds, string truncation, buffer limits
+   - State: partial writes leaving inconsistent state, missing rollback
+
+3. FIX with edit_file. Each fix:
+   - Add the smallest change that handles the failure correctly
+   - Add a test asserting the new behavior (call /test if no harness exists)
+   - Prefer fail-closed over fail-open (especially for auth/access checks)
+
+4. VERIFY — run the test suite (bash). Confirm no regression.
+
+Report a brief summary: what was hardened, what tests were added.""",
+)
+
+
+register_skill(
+    "distill",
+    "Simplify code: remove unnecessary complexity while preserving behavior",
+    """Strip the specified code to its essence. Behavior MUST be preserved exactly.
+
+1. READ the target file(s) completely.
+
+2. IDENTIFY waste:
+   - Dead code (unreached branches, unused imports/vars/functions)
+   - Speculative abstraction (1-use interface, premature generic, "just in case" config)
+   - Duplication that should be a helper (DRY)
+   - Over-deep nesting → early returns / guard clauses
+   - Comments that restate the code instead of explaining WHY
+   - Indirection layers with no value (1-line wrappers around stdlib)
+   - Magic numbers → named constants (or remove if obvious)
+
+3. REFACTOR with edit_file. Each change:
+   - Single-purpose commit (one type of simplification per edit)
+   - Behavior must be preserved — DO NOT change semantics
+   - Function ≤ 50 lines, file ≤ 300 lines
+
+4. VERIFY — re-run tests (bash) to confirm zero behavior change.
+
+Report: lines removed, abstractions collapsed, what was preserved.
+If a simplification would change behavior, STOP and ask the user.""",
+)
+
+
+register_skill(
+    "api-design",
+    "Design or review a REST/HTTP API for production",
+    """Design or audit the specified API. Apply REST production patterns.
+
+If designing a new endpoint, output:
+
+## Resource & Method
+- Path: `/api/v1/<resource>` — plural noun, kebab-case
+- Method: GET (read) / POST (create) / PUT (full replace) / PATCH (partial) / DELETE
+- Idempotency: which methods are idempotent? PUT/DELETE/GET yes; POST may need Idempotency-Key
+
+## Request
+- Headers: Authorization, Content-Type, Idempotency-Key (POST), If-Match (optimistic locking)
+- Body schema (typed, with required vs optional)
+- Validation rules at the boundary
+
+## Response
+- Success status: 200 (read) / 201 (created, with Location header) / 204 (no content)
+- Body schema (consistent envelope across endpoints)
+- Pagination: cursor-based preferred (offset only for small datasets); return next/prev cursors
+
+## Errors
+- 400 validation, 401 auth missing, 403 forbidden, 404 not found, 409 conflict, 410 gone, 422 unprocessable, 429 rate limit, 5xx server
+- Error envelope: `{ "error": { "code": "INVALID_INPUT", "message": "...", "details": [...] } }`
+- Never leak internals (stack traces, DB errors)
+
+## Cross-cutting
+- Versioning: URL `/v1/` or `Accept-Version` header
+- Rate limiting: per-token, document limit + Retry-After
+- CORS: explicit origins, never wildcard with credentials
+- Audit logging: who did what, when
+
+If reviewing existing API, check each section above and flag deviations.""",
+)

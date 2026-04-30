@@ -12,6 +12,7 @@ class ToolContext:
         self.cwd = initial_cwd
         self.read_files: set[str] = set()
         self.backups: dict[str, bytes] = {}  # file_path -> content for file_backup/restore
+        self.rules_loaded: set[str] = set()  # rule names already hinted/loaded this session
 
     def mark_file_read(self, path: str):
         self.read_files.add(os.path.abspath(path))

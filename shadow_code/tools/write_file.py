@@ -1,6 +1,24 @@
 import os
 
+from ..rules_loader import rule_for_filename
 from .base import BaseTool, ToolResult
+
+
+def _write_rule_hint(ctx, path: str, content: str) -> str:
+    """Append a language-rule nudge for substantive writes (>500 chars)."""
+    if len(content) <= 500:
+        return ""
+    rule_name = rule_for_filename(path)
+    if rule_name is None:
+        return ""
+    rules_loaded = getattr(ctx, "rules_loaded", None)
+    if rules_loaded is None or rule_name in rules_loaded:
+        return ""
+    rules_loaded.add(rule_name)
+    return (
+        f"\n[💡 Tip: for non-trivial {rule_name} code, call get_language_rules "
+        f"with name='{rule_name}' if you have not already this session.]"
+    )
 
 
 class WriteFileTool(BaseTool):
@@ -70,8 +88,9 @@ class WriteFileTool(BaseTool):
             return ToolResult(False, f"Cannot write file: {e}")
 
         new_size = os.path.getsize(path)
+        hint = _write_rule_hint(self.ctx, path, content)
 
         if existed:
-            return ToolResult(True, f"Updated file: {path} ({old_size} -> {new_size} bytes)")
+            return ToolResult(True, f"Updated file: {path} ({old_size} -> {new_size} bytes){hint}")
         else:
-            return ToolResult(True, f"Created new file: {path} ({new_size} bytes)")
+            return ToolResult(True, f"Created new file: {path} ({new_size} bytes){hint}")
