@@ -19,7 +19,10 @@ FROM qwen2.5-coder:latest
 # top_k 40:        focused token selection
 # top_p 0.9:       nucleus sampling
 # min_p 0.05:      drop low-probability tokens
-# repeat_penalty 1.05: mild penalty against code repetition loops
+# repeat_penalty 1.15: penalty against code repetition loops
+#                     (raised from 1.05 — Q4 quantization causes degeneration
+#                      on low-frequency tokens, esp. Georgian/Cyrillic)
+# repeat_last_n 256:   widen penalty window beyond default 64
 # num_predict 8192:    large output (fits 200-line files comfortably)
 # num_ctx 32768:       qwen2.5-coder native max. 131K is Gemma-only.
 #                      32K = ~24K free for conversation after system prompt + tools.
@@ -29,7 +32,8 @@ PARAMETER temperature 0.2
 PARAMETER top_k 40
 PARAMETER top_p 0.9
 PARAMETER min_p 0.05
-PARAMETER repeat_penalty 1.05
+PARAMETER repeat_penalty 1.15
+PARAMETER repeat_last_n 256
 PARAMETER num_predict 8192
 PARAMETER num_ctx 32768
 PARAMETER stop <|im_end|>
