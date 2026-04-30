@@ -113,6 +113,51 @@ To go above 85%, the path is **not more prompt engineering** — it's a stronger
 model (Qwen 14B/32B), embeddings for semantic memory, or actual multi-process
 orchestration.
 
+## Post-R4 Hardening (5c809ef + 419ea8f + 5084031)
+
+After R4's regression suite passed, two real-world bugs surfaced that R1-R4
+synthetic tests did not catch:
+
+### Bug 1 — 7B emits raw `bash` blocks instead of `tool_call` JSON
+
+**Symptom:** user asked "List files in /tmp" → model responded with
+` ```bash\nls -la /tmp\n``` ` (raw shell, no JSON wrapper). Parser's Pass 2
+required `{tool, params}` JSON shape, so the block was treated as prose and
+nothing executed. From the user's POV the model "just chatted."
+
+**Fix:** parser Pass 4 fallback (`419ea8f`). When passes 1-3 yield zero
+tool calls AND a ` ```bash ` / ` ```sh ` block exists with non-JSON body,
+synthesize a `bash` tool call with `params.command = body`. Skips
+JSON-shaped bodies to avoid double-handling Pass 2 candidates.
+
+### Bug 2 — Q4 repetition loop on Georgian tokens
+
+**Symptom:** Georgian prompts produced clean output for ~30 tokens, then
+locked into endless repetition of a single low-frequency word
+("დაითხოვეთ" × hundreds). Same Q4_K_M failure mode reported widely for
+Cyrillic / CJK on small quants.
+
+**Fix:** `Modelfile.qwen` (`5c809ef`):
+- `repeat_penalty 1.05 → 1.15`
+- Add `repeat_last_n 256` (default 64 was too narrow)
+
+Verified: clean Georgian output with proper `tool_call` write_file
+invocation. No regression on phase0/phase5 (English) suites.
+
+### Bug 3 — VRAM headroom on 8GB cards
+
+Not a bug, a capacity constraint. shadow-qwen needs 6.2GB VRAM on 32K ctx;
+GTX 1070 has 8GB total. Default 5min keep-alive can block other GPU work.
+Documented in `docs/VRAM.md` with three unload methods + ready-to-use
+shell aliases (`gpu-status`, `gpu-free`, `gpu-free-all`).
+
+### Lesson
+
+Synthetic regression suites probe *the parser and prompt logic*. They do
+not probe **the actual model under realistic stochastic load** in the
+user's language. Always run an interactive smoke test in the user's
+primary language before shipping prompt/parameter changes.
+
 ## File Map
 
 ```
@@ -121,7 +166,8 @@ shadow_code/
 ├── skills.py             ─ 20 skills with auto-prepended bilingual
 ├── rules_loader.py       ─ EXTENSION_TO_RULE + lru-cached loaders
 ├── tool_context.py       ─ ToolContext (cwd, read_files, rules_loaded)
-├── parser.py             ─ 3-pass tool extraction (UNCHANGED at 100%)
+├── parser.py             ─ 4-pass tool extraction (canonical → JSON-shape →
+│                            unclosed → raw bash/sh fence fallback)
 ├── conversation.py       ─ msg history (UNCHANGED)
 ├── compaction.py         ─ context compaction (UNCHANGED)
 ├── main.py               ─ REPL + agentic loop (UNCHANGED in R1-R4)

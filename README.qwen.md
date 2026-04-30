@@ -40,8 +40,10 @@ ollama create shadow-qwen -f Modelfile.qwen
 - `FROM qwen2.5-coder:latest`
 - `parameter num_ctx 32768`
 - `parameter temperature 0.2`
-- `parameter top_p 0.9`
+- `parameter top_p 0.9` / `top_k 40` / `min_p 0.05`
 - `parameter num_predict 8192`
+- `parameter repeat_penalty 1.15` + `repeat_last_n 256` (prevents Q4
+  degeneration loops on low-frequency Georgian/Cyrillic tokens)
 - `parameter stop "<|im_end|>"` (qwen ChatML stop)
 
 ## Install & run
@@ -59,8 +61,8 @@ SHADOW_MODEL=shadow-qwen:latest shadow-code
 | File | Change |
 |---|---|
 | `Modelfile.qwen` | New: qwen2.5 ChatML stop tokens, 32K ctx |
-| `shadow_code/parser.py` | 3-pass extraction: canonical fence → lenient fence → unclosed-fence fallback. Tolerates qwen's tendency to label fences as ` ```bash ` / ` ```json ` |
-| `shadow_code/prompt.py` | Anti-hallucination block (don't fabricate `<tool_result>`); EAS baseline (Iron Laws + 11 security rules); `get_language_rules` tool documentation |
+| `shadow_code/parser.py` | 4-pass extraction: canonical `tool_call` fence → lenient JSON-shape fence → unclosed-fence fallback → **raw `bash`/`sh` fence as bash tool call** (Pass 4 catches 7B's tendency to skip the JSON wrapper entirely) |
+| `shadow_code/prompt.py` | Anti-hallucination block; EAS Iron Laws + **full 20 zero-trust security rules**; `get_language_rules` tool documentation |
 | `shadow_code/rules_loader.py` | New: extension→rule mapping + cached summary loader from `~/.copilot/rules/` |
 | `shadow_code/tools/get_language_rules.py` | New: BaseTool for on-demand rule fetch |
 | `shadow_code/skills.py` | `/review` enriched with 5-Eye protocol; `/test` enriched with testing pyramid + `--e2e`; new `/audit` (STRIDE security) and `/migrate` (DB migrations) |
@@ -141,14 +143,32 @@ python phase5_e2e.py         # realistic task probes
   parallel personas are physically impossible on 7B in one forward pass.
   See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the realist score sheet.
 
+## VRAM management
+
+shadow-qwen needs ~6.5 GB VRAM (Q4_K_M, 32K ctx). Ollama keeps the model
+loaded in VRAM for 5 minutes after the last request (default keep-alive).
+On 8 GB cards (e.g. GTX 1070) this leaves headroom for one model only.
+
+To unload immediately:
+
+```bash
+curl -s http://localhost:11434/api/generate \
+  -d '{"model":"shadow-qwen:latest","keep_alive":0}'
+```
+
+See [docs/VRAM.md](docs/VRAM.md) for the full guide: status checks,
+batch unload, `OLLAMA_KEEP_ALIVE` configuration, ready-to-use shell
+aliases (`gpu-status`, `gpu-free`, `gpu-free-all`), and troubleshooting.
+
 ## Comparison vs. base shadow-code
 
 | | Base | qwen variant |
 |---|---|---|
 | Default model | gemma3:27b | shadow-qwen (qwen2.5-coder:7b) |
-| Modelfile | gemma stops | ChatML stops |
-| Parser passes | 1 | 3 |
-| EAS baseline | none | injected |
-| Rule loader | none | `get_language_rules` |
-| Skills | 13 | 15 (+audit, +migrate; review/test enriched) |
+| Modelfile | gemma stops | ChatML stops + tuned repeat penalty |
+| Parser passes | 1 | 4 |
+| EAS baseline | none | full 20 zero-trust rules + Iron Laws |
+| Rule loader | none | `get_language_rules` + auto-inject |
+| Skills | 13 | 20 (planning, review, hardening, distill, api-design, audit, migrate…) |
 | Anti-hallucination block | none | yes |
+| Bilingual EN/KA preamble | none | auto-prepended to every skill |
