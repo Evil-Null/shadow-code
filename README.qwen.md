@@ -65,17 +65,33 @@ SHADOW_MODEL=shadow-qwen:latest shadow-code
 | `shadow_code/tools/get_language_rules.py` | New: BaseTool for on-demand rule fetch |
 | `shadow_code/skills.py` | `/review` enriched with 5-Eye protocol; `/test` enriched with testing pyramid + `--e2e`; new `/audit` (STRIDE security) and `/migrate` (DB migrations) |
 
-## Skills overview
+## Skills overview (20 total)
 
 ```
-/review     5-Eye review (architect/dev/security/qa/lead)
-/test       Run tests; --e2e for Playwright
-/audit      Security audit: STRIDE + scans + manual checks
-/migrate    Safe DB migrations (PG/MySQL/Prisma/Drizzle/Django/golang-migrate)
-/refactor   Behavior-preserving cleanup
-/debug      Root-cause + fix
-/review …   (and 9 more — see `/skills` in REPL)
+Planning & review:
+  /plan            Implementation plan (no edits) — V1-V7 schema
+  /review          4-section structured: ARCHITECT / SECURITY / QA / LEAD + V1-V7
+  /audit           STRIDE security audit
+  /cross-validate  Adversarial 2-pass self-review
+
+Code quality:
+  /harden          Production resilience: errors, edges, i18n, concurrency
+  /distill         Simplification preserving behavior
+  /refactor        Behavior-preserving cleanup
+  /simplify        Reuse / quality / efficiency review
+  /debug           Root-cause + fix
+
+Domain workflows:
+  /test            Testing pyramid; --e2e for Playwright
+  /migrate         Safe DB migrations (PG/MySQL/Prisma/Drizzle/Django)
+  /api-design      REST API design/audit checklist
+
+Utilities:
+  /commit /pr /verify /search /explain /init /stuck /remember
 ```
+
+All skills auto-prepend a bilingual directive: respond in the user's language
+(Georgian if user wrote Georgian; identifiers/paths/code always English).
 
 ## Tools
 
@@ -86,12 +102,15 @@ SHADOW_MODEL=shadow-qwen:latest shadow-code
 `get_language_rules` accepts `{"extension": ".py"}` or `{"name": "python"}`,
 returns a ~1.5KB summary. Pass `{"full": true}` for the full rule.
 
+`edit_file` and `write_file` automatically nudge the model toward
+`get_language_rules` on substantive changes (deduped per session).
+
 ## Validation
 
 | Phase | Suite | Result |
 |---|---|---|
-| 0 | 15 prompt tool-format probe | 15/15 (100%), avg 3.0s |
-| 5 | 5 realistic agentic tasks (read/grep/ls/rules/bash) | 5/5 (100%), avg 3.8s |
+| 0 | 15 prompt tool-format probe | 87–100% avg 3.0s (7B stochastic) |
+| 5 | 5 realistic agentic tasks (read/grep/ls/rules/bash) | 5/5 (100%), avg 3.4s |
 
 Run yourself:
 
@@ -102,12 +121,12 @@ python phase5_e2e.py         # realistic task probes
 
 ## Token budget
 
-| Component | Tokens | % of 32K |
-|---|---|---|
-| System prompt | ~2,250 | 6.8% |
-| One skill (avg) | ~210 | 0.6% |
-| **Fixed total** | **~2,460** | **7.5%** |
-| Available for work | ~30,300 | 92.5% |
+| Component | Chars | Tokens | % of 32K |
+|---|---|---|---|
+| System prompt | 10,892 | ~2,723 | 8.3% |
+| Largest skill (`/migrate`) | 1,759 | ~440 | 1.3% |
+| **Worst-case static** | **~12,650** | **~3,162** | **9.7%** |
+| Available for work | — | ~29,600 | 90.3% |
 
 ## Limitations
 
@@ -116,11 +135,11 @@ python phase5_e2e.py         # realistic task probes
 - Tool-format reliability across runs varies 87–100% on the 15-prompt probe
   due to model stochasticity (temperature 0.2 doesn't fully eliminate it).
 - The model occasionally recites EAS rules from memory instead of calling
-  `get_language_rules`. Strongly worded "CALL THIS TOOL" in the prompt
-  mitigates but doesn't eliminate this.
-- 5-Eye review pipeline is simulated within the `/review` skill prompt;
-  there is no multi-agent infrastructure here (out of scope for a single
-  local model).
+  `get_language_rules`. The auto-injected hints in edit/write tool results
+  mitigate this but cannot fully eliminate it.
+- `/review` is a structured single-pass, not real multi-agent — true 5-Eye
+  parallel personas are physically impossible on 7B in one forward pass.
+  See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the realist score sheet.
 
 ## Comparison vs. base shadow-code
 
